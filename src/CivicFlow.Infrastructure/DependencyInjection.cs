@@ -31,9 +31,7 @@ public static class DependencyInjection
                 options.Password.RequireNonAlphanumeric = true;
             })
             .AddRoles<IdentityRole<Guid>>()
-            .AddEntityFrameworkStores<ApplicationDbContext>()
-            .AddSignInManager()
-            .AddDefaultTokenProviders();
+            .AddEntityFrameworkStores<ApplicationDbContext>();
 
         return services;
     }

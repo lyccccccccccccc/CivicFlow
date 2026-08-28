@@ -14,7 +14,6 @@ namespace CivicFlow.Api.Controllers;
 [Route("api/auth")]
 public sealed class AuthController(
     UserManager<ApplicationUser> users,
-    SignInManager<ApplicationUser> signIn,
     ApplicationDbContext db,
     TokenService tokens,
     IOptions<JwtOptions> jwtOptions) : ControllerBase
@@ -42,7 +41,7 @@ public sealed class AuthController(
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request)
     {
         var user = await users.FindByEmailAsync(request.Email.Trim());
-        if (user is null || !user.IsActive || !(await signIn.CheckPasswordSignInAsync(user, request.Password, true)).Succeeded)
+        if (user is null || !user.IsActive || !await users.CheckPasswordAsync(user, request.Password))
             return Unauthorized(new { message = "Invalid email or password." });
         return Ok(await IssueTokens(user));
     }
