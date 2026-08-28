@@ -1,0 +1,35 @@
+name: CivicFlow CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore CivicFlow.sln
+      - run: dotnet build CivicFlow.sln --configuration Release --no-restore
+      - run: dotnet test CivicFlow.sln --configuration Release --no-build
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/CivicFlow.Client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/CivicFlow.Client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build

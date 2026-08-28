@@ -1,0 +1,48 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CivicFlow.Domain", "src\CivicFlow.Domain\CivicFlow.Domain.csproj", "{A4BAEA51-80C8-4F28-A587-035A1E49B82A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CivicFlow.Application", "src\CivicFlow.Application\CivicFlow.Application.csproj", "{E93DCC09-D31A-47CF-8231-1B55E85BB5CE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CivicFlow.Infrastructure", "src\CivicFlow.Infrastructure\CivicFlow.Infrastructure.csproj", "{FB75DDAC-2CCB-4712-972E-71524E999304}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CivicFlow.Api", "src\CivicFlow.Api\CivicFlow.Api.csproj", "{DE7A6038-9706-4C3F-A237-C8747749FBD2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CivicFlow.UnitTests", "tests\CivicFlow.UnitTests\CivicFlow.UnitTests.csproj", "{66E30F9B-2E08-4D99-9141-20A1B338D0BB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CivicFlow.IntegrationTests", "tests\CivicFlow.IntegrationTests\CivicFlow.IntegrationTests.csproj", "{D676D906-C78B-4C54-9A6E-9B8D36645249}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A4BAEA51-80C8-4F28-A587-035A1E49B82A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4BAEA51-80C8-4F28-A587-035A1E49B82A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4BAEA51-80C8-4F28-A587-035A1E49B82A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4BAEA51-80C8-4F28-A587-035A1E49B82A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E93DCC09-D31A-47CF-8231-1B55E85BB5CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E93DCC09-D31A-47CF-8231-1B55E85BB5CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E93DCC09-D31A-47CF-8231-1B55E85BB5CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E93DCC09-D31A-47CF-8231-1B55E85BB5CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB75DDAC-2CCB-4712-972E-71524E999304}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB75DDAC-2CCB-4712-972E-71524E999304}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB75DDAC-2CCB-4712-972E-71524E999304}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB75DDAC-2CCB-4712-972E-71524E999304}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DE7A6038-9706-4C3F-A237-C8747749FBD2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE7A6038-9706-4C3F-A237-C8747749FBD2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE7A6038-9706-4C3F-A237-C8747749FBD2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE7A6038-9706-4C3F-A237-C8747749FBD2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66E30F9B-2E08-4D99-9141-20A1B338D0BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66E30F9B-2E08-4D99-9141-20A1B338D0BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66E30F9B-2E08-4D99-9141-20A1B338D0BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66E30F9B-2E08-4D99-9141-20A1B338D0BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D676D906-C78B-4C54-9A6E-9B8D36645249}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D676D906-C78B-4C54-9A6E-9B8D36645249}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D676D906-C78B-4C54-9A6E-9B8D36645249}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D676D906-C78B-4C54-9A6E-9B8D36645249}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
