@@ -116,23 +116,31 @@ public sealed class ServiceRequest : BaseEntity
         DateTimeOffset resolutionDueAtUtc,
         DateTimeOffset updatedAtUtc)
     {
-        EnsureStatus(ServiceRequestStatus.Submitted);
+        UpdateTriage(priority, firstResponseDueAtUtc, resolutionDueAtUtc, updatedAtUtc);
+    }
 
+    public void UpdateTriage(
+        CasePriority priority,
+        DateTimeOffset firstResponseDueAtUtc,
+        DateTimeOffset resolutionDueAtUtc,
+        DateTimeOffset updatedAtUtc)
+    {
+        if (Status is ServiceRequestStatus.Resolved or ServiceRequestStatus.Closed or ServiceRequestStatus.Rejected)
+            throw new DomainRuleException($"Triage cannot be changed while the request is {Status}.");
         if (firstResponseDueAtUtc <= SubmittedAtUtc || resolutionDueAtUtc <= firstResponseDueAtUtc)
-        {
             throw new DomainRuleException("SLA due dates must follow the submission time in sequence.");
-        }
 
         Priority = priority;
         FirstResponseDueAtUtc = firstResponseDueAtUtc;
         ResolutionDueAtUtc = resolutionDueAtUtc;
-        Status = ServiceRequestStatus.Triaged;
+        if (Status == ServiceRequestStatus.Submitted) Status = ServiceRequestStatus.Triaged;
         MarkUpdated(updatedAtUtc);
     }
 
     public void Assign(Guid officerId, DateTimeOffset updatedAtUtc)
     {
-        if (Status is not (ServiceRequestStatus.Triaged or ServiceRequestStatus.Assigned))
+        if (Status is ServiceRequestStatus.Submitted or ServiceRequestStatus.Resolved or
+            ServiceRequestStatus.Closed or ServiceRequestStatus.Rejected)
         {
             throw InvalidTransition(ServiceRequestStatus.Assigned);
         }
@@ -143,7 +151,8 @@ public sealed class ServiceRequest : BaseEntity
         }
 
         AssignedOfficerId = officerId;
-        Status = ServiceRequestStatus.Assigned;
+        if (Status is ServiceRequestStatus.Triaged or ServiceRequestStatus.Assigned)
+            Status = ServiceRequestStatus.Assigned;
         MarkUpdated(updatedAtUtc);
     }
 

@@ -89,6 +89,35 @@ public sealed class ServiceRequestTests
         Assert.Null(request.ResolvedAtUtc);
     }
 
+    [Fact]
+    public void UpdateTriage_AfterAssignment_ChangesTargetsWithoutRegressingStatus()
+    {
+        var request = CreateRequest();
+        request.Triage(CasePriority.Medium, SubmittedAt.AddHours(8), SubmittedAt.AddHours(48), SubmittedAt.AddMinutes(5));
+        request.Assign(Guid.NewGuid(), SubmittedAt.AddMinutes(10));
+
+        request.UpdateTriage(CasePriority.Critical, SubmittedAt.AddHours(2), SubmittedAt.AddHours(12), SubmittedAt.AddMinutes(20));
+
+        Assert.Equal(ServiceRequestStatus.Assigned, request.Status);
+        Assert.Equal(CasePriority.Critical, request.Priority);
+        Assert.Equal(SubmittedAt.AddHours(12), request.ResolutionDueAtUtc);
+    }
+
+    [Fact]
+    public void Reassign_InProgress_PreservesWorkflowStatus()
+    {
+        var request = CreateRequest();
+        request.Triage(CasePriority.High, SubmittedAt.AddHours(4), SubmittedAt.AddHours(24), SubmittedAt.AddMinutes(5));
+        request.Assign(Guid.NewGuid(), SubmittedAt.AddMinutes(10));
+        request.StartProgress(SubmittedAt.AddMinutes(15));
+        var replacement = Guid.NewGuid();
+
+        request.Assign(replacement, SubmittedAt.AddMinutes(20));
+
+        Assert.Equal(ServiceRequestStatus.InProgress, request.Status);
+        Assert.Equal(replacement, request.AssignedOfficerId);
+    }
+
     private static ServiceRequest CreateRequest()
     {
         return ServiceRequest.Create(

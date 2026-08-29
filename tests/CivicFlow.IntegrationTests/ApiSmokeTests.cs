@@ -35,6 +35,8 @@ public sealed class ApiSmokeTests : IClassFixture<CivicFlowFactory>
 
 public sealed class CivicFlowFactory : WebApplicationFactory<Program>
 {
+    private readonly string _databaseName = $"CivicFlowTests-{Guid.NewGuid()}";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -44,7 +46,7 @@ public sealed class CivicFlowFactory : WebApplicationFactory<Program>
             services.RemoveAll<IDbContextOptionsConfiguration<ApplicationDbContext>>();
             services.RemoveAll<ApplicationDbContext>();
             services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseInMemoryDatabase($"CivicFlowTests-{Guid.NewGuid()}"));
+                options.UseInMemoryDatabase(_databaseName));
         });
     }
 }
