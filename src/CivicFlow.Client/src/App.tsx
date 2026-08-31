@@ -31,7 +31,8 @@ export default function App() {
     <Route element={<AppShell />}><Route index element={<LandingPage />} /><Route path="login" element={<LoginPage />} /><Route path="register" element={<RegisterPage />} />
       <Route element={<ProtectedRoute />}><Route path="home" element={<HomeRedirect />} /><Route path="requests" element={<CasesPage />} /><Route path="cases/:id" element={<CaseDetailPage />} /><Route path="requests/new" element={<NewRequestPage />} /><Route path="notifications" element={<NotificationsPage />} /></Route>
       <Route element={<ProtectedRoute staff />}><Route path="cases" element={<CasesPage />} /><Route path="dashboard" element={<DashboardPage />} /></Route>
-      <Route element={<ProtectedRoute role="SystemAdministrator" />}><Route path="admin" element={<AdminPage />} /><Route path="admin/audit-log" element={<AuditLogPage />} /></Route>
+      <Route element={<ProtectedRoute role="SystemAdministrator" />}><Route path="admin" element={<AdminPage />} /></Route>
+      <Route element={<ProtectedRoute managers />}><Route path="admin/audit-log" element={<AuditLogPage />} /></Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   </Routes></AuthProvider></BrowserRouter></ThemeProvider>

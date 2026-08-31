@@ -72,5 +72,5 @@ export function CasesPage() {
 function Sortable({ label, name, active, direction, onSort }: { label: string; name: string; active: string | null; direction: 'asc' | 'desc'; onSort: (name: string) => void }) {
   return <TableCell sortDirection={active === name ? direction : false}><TableSortLabel active={active === name} direction={active === name ? direction : 'asc'} onClick={() => onSort(name)}>{label}</TableSortLabel></TableCell>
 }
-const format = (value: string) => value.replace(/([A-Z])/g, ' $1').trim()
+const format = (value: string) => ({ WaitingForResident: 'Waiting for resident', InProgress: 'In progress', OnTrack: 'On track', AtRisk: 'At risk', NoSla: 'No SLA' }[value] ?? value)
 const formatDate = (value: string) => new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })

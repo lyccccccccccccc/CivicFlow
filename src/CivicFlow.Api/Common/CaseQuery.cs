@@ -21,6 +21,11 @@ public class CaseFilterParameters
 
 public static class CaseQuery
 {
+    // Active workload = assigned non-terminal cases, shared by dashboard and CSV.
+    public static System.Linq.Expressions.Expression<Func<ServiceRequest, bool>> ActiveWorkload =>
+        x => x.AssignedOfficerId != null && x.Status != ServiceRequestStatus.Resolved &&
+            x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected;
+
     public static IQueryable<ServiceRequest> Apply(
         IQueryable<ServiceRequest> query,
         CaseFilterParameters filters,

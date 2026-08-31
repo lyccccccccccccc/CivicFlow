@@ -46,7 +46,11 @@ public sealed class CivicFlowFactory : WebApplicationFactory<Program>
             services.RemoveAll<IDbContextOptionsConfiguration<ApplicationDbContext>>();
             services.RemoveAll<ApplicationDbContext>();
             services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseInMemoryDatabase(_databaseName));
+            {
+                var sql = Environment.GetEnvironmentVariable("CIVICFLOW_TEST_SQL");
+                if (string.IsNullOrWhiteSpace(sql)) options.UseInMemoryDatabase(_databaseName);
+                else options.UseSqlServer(sql);
+            });
         });
     }
 }

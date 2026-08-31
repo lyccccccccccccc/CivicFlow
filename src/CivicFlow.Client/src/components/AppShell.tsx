@@ -16,7 +16,7 @@ export function AppShell() {
           {resident && <Button color="inherit" component={Link} to="/requests/new">Submit request</Button>}
           {user && !resident && <Button color="inherit" component={Link} to="/dashboard">Dashboard</Button>}
           {admin && <Button color="inherit" component={Link} to="/admin">Admin</Button>}
-          {admin && <Button color="inherit" component={Link} to="/admin/audit-log">Audit log</Button>}
+          {(admin || user?.roles.includes('TeamManager')) && <Button color="inherit" component={Link} to="/admin/audit-log">Audit log</Button>}
         </Stack>
         {user ? <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <IconButton color="inherit" aria-label="Notifications" component={Link} to="/notifications"><Badge variant="dot" color="warning"><NotificationsNoneRoundedIcon /></Badge></IconButton>

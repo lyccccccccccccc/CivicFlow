@@ -11,10 +11,11 @@ namespace CivicFlow.Api.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
+[Authorize(Roles = CivicFlowRoles.SystemAdministrator + "," + CivicFlowRoles.TeamManager)]
 public sealed class AdminController(ApplicationDbContext db, UserManager<ApplicationUser> users) : ControllerBase
 {
     [HttpGet("users")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> Users()
     {
         var results = new List<object>();
@@ -24,6 +25,7 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpPut("users/{id:guid}/role")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> ChangeRole(Guid id, ChangeRoleRequest request)
     {
         if (!CivicFlowRoles.All.Contains(request.Role)) return BadRequest(new { message = "Unknown CivicFlow role." });
@@ -49,6 +51,7 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpPut("users/{id:guid}/active")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> ChangeActive(Guid id, ChangeActiveRequest request)
     {
         if (id == User.UserId() && !request.IsActive) return BadRequest(new { message = "You cannot disable your own account." });
@@ -63,9 +66,11 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpGet("categories")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> Categories() => Ok(await db.ServiceCategories.AsNoTracking().OrderBy(x => x.Name).ToListAsync());
 
     [HttpPost("categories")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> CreateCategory(CategoryRequest request)
     {
         if (await db.ServiceCategories.AnyAsync(x => x.Name == request.Name.Trim()))
@@ -78,6 +83,7 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpPut("categories/{id:guid}")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> UpdateCategory(Guid id, CategoryRequest request)
     {
         var item = await db.ServiceCategories.FindAsync(id);
@@ -92,6 +98,7 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpPut("categories/{id:guid}/active")]
+    [Authorize(Roles = CivicFlowRoles.SystemAdministrator)]
     public async Task<IActionResult> ChangeCategoryActive(Guid id, ChangeActiveRequest request)
     {
         var item = await db.ServiceCategories.FindAsync(id);
@@ -103,13 +110,14 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpGet("audit-logs")]
+    // This separate read-only endpoint is the only full audit surface.
     public async Task<IActionResult> AuditLogs([FromQuery] AuditLogQuery request)
     {
         var query = db.CaseActivities.AsNoTracking().AsQueryable();
         if (request.UserId.HasValue) query = query.Where(x => x.ActorId == request.UserId);
         if (!string.IsNullOrWhiteSpace(request.Action)) query = query.Where(x => x.Type.Contains(request.Action.Trim()));
         if (request.From.HasValue) query = query.Where(x => x.CreatedAtUtc >= request.From);
-        if (request.To.HasValue) query = query.Where(x => x.CreatedAtUtc < request.To);
+        if (request.To.HasValue) query = query.Where(x => x.CreatedAtUtc < request.To.Value.AddDays(1));
         if (!string.IsNullOrWhiteSpace(request.Case))
         {
             var term = request.Case.Trim();
@@ -130,6 +138,10 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
         return Ok(new PagedResponse<object>(rows.Cast<object>().ToList(), page, pageSize, total,
             (int)Math.Ceiling(total / (double)pageSize)));
     }
+
+    [HttpGet("audit-users")]
+    public async Task<IActionResult> AuditUsers() => Ok(await db.Users.AsNoTracking()
+        .OrderBy(x => x.FirstName).Select(x => new { x.Id, x.FirstName, x.LastName }).ToListAsync());
 
     private void AddAudit(string type, string message) =>
         db.CaseActivities.Add(new CaseActivity(Guid.Empty, User.UserId(), type, message, false, DateTimeOffset.UtcNow));

@@ -12,7 +12,9 @@ public static class DatabaseSeeder
     {
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await db.Database.EnsureCreatedAsync();
+        var created = await db.Database.EnsureCreatedAsync();
+        // Never re-seed an existing database: in particular, do not restore removed roles.
+        if (!created) return;
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         foreach (var role in CivicFlowRoles.All)

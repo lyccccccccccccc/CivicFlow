@@ -6,7 +6,7 @@ export type Category = { id: string; name: string; description: string; firstRes
 export type Officer = { id: string; firstName: string; lastName: string; email?: string }
 export type CaseItem = { id: string; referenceNumber: string; title: string; description: string; address: string; serviceCategoryId: string; categoryName: string; status: string; priority: string; assignedOfficerId?: string; assignedOfficerName?: string; submittedAtUtc: string; firstResponseDueAtUtc?: string; resolutionDueAtUtc?: string; updatedAtUtc?: string; slaState: string }
 export type CaseDetail = { case: CaseItem; category: { id: string; name: string; firstResponseHours: number; resolutionHours: number }; assignedOfficer?: { id: string; name: string; email: string }; activities: Activity[] }
-export type Activity = { id: string; type: string; message: string; isPublic: boolean; createdAtUtc: string; actorId: string; actorName?: string }
+export type Activity = { id: string; type: string; label: string; section: 'conversation' | 'internal' | 'progress'; message: string; isPublic: boolean; createdAtUtc: string; actorName?: string }
 export type PagedResponse<T> = { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number }
 export type ChartRow = { label: string; count: number }
 export type DashboardData = { open: number; unassigned: number; atRisk: number; overdue: number; waitingForResident: number; resolved: number; byStatus: ChartRow[]; byPriority: ChartRow[]; byCategory: ChartRow[]; officerWorkload: ChartRow[]; slaCases: Pick<CaseItem, 'id' | 'referenceNumber' | 'title' | 'priority' | 'status' | 'resolutionDueAtUtc' | 'categoryName' | 'slaState'>[] }
@@ -22,8 +22,8 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth.accessToken}` } : {}), ...options.headers },
   })
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { message?: string; title?: string }
-    throw new Error(body.message ?? body.title ?? `Request failed (${response.status})`)
+    const body = await response.json().catch(() => ({})) as { message?: string; detail?: string; title?: string }
+    throw new Error(body.message ?? body.detail ?? body.title ?? `Request failed (${response.status})`)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

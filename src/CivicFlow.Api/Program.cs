@@ -66,6 +66,7 @@ app.MapHealthChecks("/health");
 app.MapControllers();
 
 await DatabaseSeeder.InitialiseAsync(app.Services);
+await Phase2Upgrade.ApplyAsync(app.Services);
 
 app.Run();
 

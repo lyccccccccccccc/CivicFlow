@@ -8,7 +8,7 @@ type AuditRow = { id: string; action: string; message: string; createdAtUtc: str
 
 export function AuditLogPage() {
   const [params, setParams] = useSearchParams(); const query = params.toString(); const [data, setData] = useState<PagedResponse<AuditRow> | null>(null); const [users, setUsers] = useState<AdminUser[]>([]); const [error, setError] = useState('')
-  useEffect(() => { api<AdminUser[]>('/admin/users').then(setUsers) }, [])
+  useEffect(() => { api<AdminUser[]>('/admin/audit-users').then(setUsers).catch(e => setError(String(e))) }, [])
   useEffect(() => { api<PagedResponse<AuditRow>>(`/admin/audit-logs${query ? `?${query}` : ''}`).then(setData).catch(e => setError(e instanceof Error ? e.message : 'Unable to load audit log')) }, [query])
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value) next.set(key, value); else next.delete(key); if (key !== 'page') next.set('page', '1'); setParams(next) }
   const page = Number(params.get('page') ?? '1'); const pageSize = Number(params.get('pageSize') ?? '25')

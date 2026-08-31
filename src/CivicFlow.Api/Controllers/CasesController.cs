@@ -36,6 +36,7 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         var reference = $"CF-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
         var item = ServiceRequest.Create(reference, User.UserId(), request.CategoryId,
             request.Title, request.Description, request.Address, now);
+        item.ApplyInitialSla(category.FirstResponseHours, category.ResolutionHours);
         if (request.Latitude.HasValue && request.Longitude.HasValue)
             item.SetLocation(request.Latitude.Value, request.Longitude.Value, now);
         db.ServiceRequests.Add(item);
@@ -86,17 +87,13 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         var activities = await db.CaseActivities.AsNoTracking()
             .Where(x => x.ServiceRequestId == id && (!User.IsInRole(CivicFlowRoles.Resident) || x.IsPublic))
             .OrderByDescending(x => x.CreatedAtUtc)
-            .Select(x => new
-            {
-                x.Id, x.Type, x.Message, x.IsPublic, x.CreatedAtUtc, x.ActorId,
-                ActorName = db.Users.Where(u => u.Id == x.ActorId).Select(u => u.FirstName + " " + u.LastName).FirstOrDefault()
-            }).ToListAsync();
+            .ToListAsync();
         return Ok(new
         {
             Case = CaseListItem.From(item, category.Name, officer?.Name, DateTimeOffset.UtcNow, true),
             Category = new { category.Id, category.Name, category.FirstResponseHours, category.ResolutionHours },
             AssignedOfficer = officer,
-            Activities = activities
+            Activities = ActivityFeed.Project(activities, User.IsInRole(CivicFlowRoles.Resident), item.ResidentId)
         });
     }
 
@@ -108,18 +105,18 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         if (item is null) return NotFound();
         var category = await db.ServiceCategories.FindAsync(item.ServiceCategoryId);
         var now = DateTimeOffset.UtcNow;
-        var firstDue = request.FirstResponseDueAtUtc ?? now.AddHours(category!.FirstResponseHours);
-        var resolutionDue = request.ResolutionDueAtUtc ?? now.AddHours(category!.ResolutionHours);
+        var firstDue = request.FirstResponseDueAtUtc ?? item.SubmittedAtUtc.AddHours(category!.FirstResponseHours);
+        var resolutionDue = request.ResolutionDueAtUtc ?? item.SubmittedAtUtc.AddHours(category!.ResolutionHours);
         var oldPriority = item.Priority;
         var oldFirstDue = item.FirstResponseDueAtUtc;
         var oldResolutionDue = item.ResolutionDueAtUtc;
         var wasSubmitted = item.Status == ServiceRequestStatus.Submitted;
         item.UpdateTriage(request.Priority, firstDue, resolutionDue, now);
-        if (wasSubmitted) AddActivity(item.Id, "Triaged", "SLA targets applied.", true);
+        if (wasSubmitted) AddActivity(item.Id, "Triaged", "SLA targets applied.", false);
         if (oldPriority != request.Priority)
-            AddActivity(item.Id, "PriorityChanged", $"Priority changed from {oldPriority} to {request.Priority}.", true);
+            AddActivity(item.Id, "PriorityChanged", $"Priority changed from {oldPriority} to {request.Priority}.", false);
         if (oldFirstDue != firstDue || oldResolutionDue != resolutionDue)
-            AddActivity(item.Id, "SlaChanged", $"First response due {firstDue:u}; resolution due {resolutionDue:u}.", true);
+            AddActivity(item.Id, "SlaChanged", $"First response due {firstDue:u}; resolution due {resolutionDue:u}; baseline {item.SubmittedAtUtc:u}.", false);
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -134,6 +131,7 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         var item = await db.ServiceRequests.FindAsync(id);
         if (item is null) return NotFound();
         var previousId = item.AssignedOfficerId;
+        if (previousId == request.OfficerId) return NoContent();
         var previous = previousId.HasValue
             ? await db.Users.Where(x => x.Id == previousId).Select(x => x.FirstName + " " + x.LastName).FirstOrDefaultAsync()
             : null;
@@ -142,8 +140,8 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         var message = previousId.HasValue
             ? $"Reassigned from {previous ?? "unknown officer"} to {officer.FirstName} {officer.LastName}."
             : $"Assigned to {officer.FirstName} {officer.LastName}.";
-        AddActivity(item.Id, type, message, true);
-        db.UserNotifications.Add(new UserNotification(officer.Id, item.Id, "Case assigned", $"{item.ReferenceNumber}: {item.Title}", DateTimeOffset.UtcNow));
+        var activity = AddActivity(item.Id, type, message, false);
+        Notify(officer.Id, item, activity, "Case assigned", $"{item.ReferenceNumber}: {item.Title}");
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -158,8 +156,11 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         if (resident && item.ResidentId != User.UserId()) return Forbid();
         if (resident && request.Status != ServiceRequestStatus.Reopened) return Forbid();
         if (User.IsInRole(CivicFlowRoles.CaseOfficer) && item.AssignedOfficerId != User.UserId()) return Forbid();
-        if (request.Status == ServiceRequestStatus.Resolved && string.IsNullOrWhiteSpace(request.Note))
-            return BadRequest(new { message = "A resolution summary is required." });
+        if (request.Status == item.Status) return NoContent();
+        if (request.Status is ServiceRequestStatus.Resolved or ServiceRequestStatus.Reopened or ServiceRequestStatus.Rejected &&
+            (request.Note?.Trim().Length is not >= 10 or > 1800))
+            return BadRequest(new { message = "A public resolution summary or reason of 10–1800 characters is required." });
+        var previousStatus = item.Status;
         var now = DateTimeOffset.UtcNow;
         switch (request.Status)
         {
@@ -173,9 +174,13 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
             default: return BadRequest(new { message = "Unsupported status transition." });
         }
         var note = string.IsNullOrWhiteSpace(request.Note) ? string.Empty : $" {request.Note.Trim()}";
-        AddActivity(item.Id, request.Status == ServiceRequestStatus.Resolved ? "Resolved" : "StatusChanged",
-            $"Status changed to {item.Status}.{note}", true);
-        db.UserNotifications.Add(new UserNotification(item.ResidentId, item.Id, "Request updated", $"{item.ReferenceNumber} is now {item.Status}.", now));
+        var type = item.Status == ServiceRequestStatus.InProgress && previousStatus == ServiceRequestStatus.WaitingForResident ? "WorkResumed" : item.Status.ToString();
+        var label = type switch { "InProgress" => "Work is in progress", "WorkResumed" => "Work has resumed", "WaitingForResident" => "The service team is waiting for your reply", _ => type };
+        var activity = AddActivity(item.Id, type, $"{label}.{note}", true);
+        if (item.Status is ServiceRequestStatus.WaitingForResident or ServiceRequestStatus.Resolved or ServiceRequestStatus.Closed or ServiceRequestStatus.Reopened or ServiceRequestStatus.Rejected)
+            Notify(item.ResidentId, item, activity, label, $"{item.ReferenceNumber}: {label}.{note}");
+        if (item.Status == ServiceRequestStatus.Reopened && item.AssignedOfficerId.HasValue)
+            Notify(item.AssignedOfficerId.Value, item, activity, "Case reopened", $"{item.ReferenceNumber}: {request.Note?.Trim()}");
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -188,10 +193,23 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         if (item is null) return NotFound();
         if (User.IsInRole(CivicFlowRoles.Resident) && item.ResidentId != User.UserId()) return Forbid();
         if (User.IsInRole(CivicFlowRoles.CaseOfficer) && item.AssignedOfficerId != User.UserId()) return Forbid();
+        var key = Request.Headers["Idempotency-Key"].ToString();
+        if (key.Length > 100) return BadRequest(new { message = "Idempotency key is too long." });
+        var operationKey = string.IsNullOrWhiteSpace(key) ? null : $"{id}:{key}";
+        if (request.Internal && User.IsInRole(CivicFlowRoles.Resident))
+            return BadRequest(new { message = "Residents can only send public replies." });
+        if (operationKey != null && await db.CaseActivities.AnyAsync(x => x.ActorId == User.UserId() && x.OperationKey == operationKey)) return NoContent();
         var isPublic = User.IsInRole(CivicFlowRoles.Resident) || !request.Internal;
-        AddActivity(item.Id, isPublic ? "Comment" : "InternalNote", request.Message, isPublic);
+        var activity = AddActivity(item.Id, isPublic ? "Comment" : "InternalNote", request.Message, isPublic, operationKey);
         if (User.IsInRole(CivicFlowRoles.Resident) && item.Status == ServiceRequestStatus.WaitingForResident)
+        {
             item.ResumeAfterResidentReply(DateTimeOffset.UtcNow);
+            AddActivity(item.Id, "ResidentReplied", "Resident replied. Work has resumed.", true);
+        }
+        if (isPublic && User.IsInRole(CivicFlowRoles.Resident) && item.AssignedOfficerId.HasValue)
+            Notify(item.AssignedOfficerId.Value, item, activity, "Message from resident", $"{item.ReferenceNumber}: The resident sent a reply.");
+        else if (isPublic && !User.IsInRole(CivicFlowRoles.Resident))
+            Notify(item.ResidentId, item, activity, "Message from service officer", $"{item.ReferenceNumber}: The service team sent a message.");
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -233,8 +251,18 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         };
     }
 
-    private void AddActivity(Guid caseId, string type, string message, bool isPublic) =>
-        db.CaseActivities.Add(new CaseActivity(caseId, User.UserId(), type, message, isPublic, DateTimeOffset.UtcNow));
+    private CaseActivity AddActivity(Guid caseId, string type, string message, bool isPublic, string? operationKey = null)
+    {
+        var activity = new CaseActivity(caseId, User.UserId(), type, message, isPublic, DateTimeOffset.UtcNow, operationKey);
+        db.CaseActivities.Add(activity);
+        return activity;
+    }
+
+    private void Notify(Guid recipient, ServiceRequest item, CaseActivity activity, string title, string message)
+    {
+        if (recipient == User.UserId()) return;
+        db.UserNotifications.Add(new(recipient, item.Id, title, message.Length > 1000 ? message[..997] + "..." : message, DateTimeOffset.UtcNow, activity.Id.ToString()));
+    }
 }
 
 public sealed class CaseListQuery : CaseFilterParameters
@@ -252,7 +280,7 @@ public sealed record CreateCaseRequest([Required] Guid CategoryId, [Required, Ma
     decimal? Latitude, decimal? Longitude);
 public sealed record TriageRequest(CasePriority Priority, DateTimeOffset? FirstResponseDueAtUtc, DateTimeOffset? ResolutionDueAtUtc);
 public sealed record AssignRequest(Guid OfficerId);
-public sealed record ChangeStatusRequest(ServiceRequestStatus Status, string? Note);
+public sealed record ChangeStatusRequest(ServiceRequestStatus Status, [MaxLength(1800)] string? Note);
 public sealed record CommentRequest([Required, MaxLength(2000)] string Message, bool Internal = false);
 public sealed record CaseListItem(
     Guid Id, string ReferenceNumber, string Title, string Description, string Address,

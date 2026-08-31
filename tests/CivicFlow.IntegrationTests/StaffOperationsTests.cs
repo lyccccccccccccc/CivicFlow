@@ -43,8 +43,10 @@ public sealed class StaffOperationsTests : IClassFixture<CivicFlowFactory>
         Assert.Contains(page.GetProperty("items").EnumerateArray(), x => x.GetProperty("id").GetGuid() == caseId);
         var detail = await _client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}");
         var actions = detail.GetProperty("activities").EnumerateArray().Select(x => x.GetProperty("type").GetString()).ToList();
-        Assert.Contains("PriorityChanged", actions);
-        Assert.Contains("SlaChanged", actions);
+        Assert.DoesNotContain("PriorityChanged", actions);
+        Assert.DoesNotContain("SlaChanged", actions);
+        var audit = await _client.GetFromJsonAsync<JsonElement>("/api/admin/audit-logs?action=Changed&pageSize=100");
+        Assert.Contains(audit.GetProperty("items").EnumerateArray(), x => x.GetProperty("action").GetString() == "PriorityChanged");
         Assert.Contains("Assigned", actions);
         Assert.Contains("Resolved", actions);
     }

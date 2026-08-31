@@ -98,6 +98,15 @@ public sealed class ServiceRequest : BaseEntity
             submittedAtUtc);
     }
 
+    public void ApplyInitialSla(int firstResponseHours, int resolutionHours)
+    {
+        if (firstResponseHours <= 0 || resolutionHours <= firstResponseHours)
+            throw new DomainRuleException("Invalid category service targets.");
+        if (FirstResponseDueAtUtc.HasValue || ResolutionDueAtUtc.HasValue) return;
+        FirstResponseDueAtUtc = SubmittedAtUtc.AddHours(firstResponseHours);
+        ResolutionDueAtUtc = SubmittedAtUtc.AddHours(resolutionHours);
+    }
+
     public void SetLocation(decimal latitude, decimal longitude, DateTimeOffset updatedAtUtc)
     {
         if (latitude is < -90 or > 90 || longitude is < -180 or > 180)
