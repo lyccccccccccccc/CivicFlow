@@ -33,6 +33,7 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         var item = await AccessibleCase(caseId); if (item is null) return NotFound();
         var resident = User.IsInRole(CivicFlowRoles.Resident);
         if (resident && (visibility != AttachmentVisibility.Public || !ResidentEditableStatuses.Contains(item.Status))) return NotFound();
+        if (User.IsInRole(CivicFlowRoles.CaseOfficer) && !ResidentEditableStatuses.Contains(item.Status)) return NotFound();
         var idempotency = Request.Headers["Idempotency-Key"].ToString();
         if (idempotency.Length > 100) return BadRequest(new { message = "Idempotency key is too long." });
         var operationKey = string.IsNullOrWhiteSpace(idempotency) ? null : $"attachment:{caseId}:{idempotency}";
@@ -86,6 +87,7 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         var attachment = await db.CaseAttachments.SingleOrDefaultAsync(x => x.Id == attachmentId && x.ServiceRequestId == caseId && !x.IsDeleted); if (attachment is null) return NotFound();
         if (request.Reason?.Trim().Length is not >= 10 or > 500) return BadRequest(new { message = "A deletion reason of 10–500 characters is required." });
         if (User.IsInRole(CivicFlowRoles.Resident) && (attachment.UploadedByUserId != User.UserId() || attachment.Visibility != AttachmentVisibility.Public || !ResidentEditableStatuses.Contains(item.Status))) return NotFound();
+        if (User.IsInRole(CivicFlowRoles.CaseOfficer) && (attachment.UploadedByUserId != User.UserId() || !ResidentEditableStatuses.Contains(item.Status))) return NotFound();
         attachment.SoftDelete(User.UserId(), request.Reason, DateTimeOffset.UtcNow);
         db.CaseActivities.Add(new CaseActivity(caseId, User.UserId(), "AttachmentSoftDeleted", $"Attachment soft deleted: {attachment.OriginalFileName}. Reason: {request.Reason.Trim()}", false, DateTimeOffset.UtcNow));
         await db.SaveChangesAsync(); return NoContent();

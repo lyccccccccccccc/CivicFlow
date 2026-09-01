@@ -68,6 +68,7 @@ public sealed class TestFileStorage : IFileStorage
     public bool FailNextStore { get; set; }
     public Func<Task>? AfterStore { get; set; }
     public int Count => files.Count;
+    public IReadOnlyList<string> Keys => files.Keys.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     public async Task StoreAsync(string storageKey, Stream content, string contentType, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
     {
         if (FailNextStore) { FailNextStore = false; throw new InvalidOperationException("Simulated storage failure."); }
