@@ -20,6 +20,8 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddHostedService<SlaMonitorWorker>();
+builder.Services.AddScoped<AttachmentStorageMaintenance>();
+builder.Services.AddHostedService<AttachmentCleanupWorker>();
 
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("JWT settings are missing.");

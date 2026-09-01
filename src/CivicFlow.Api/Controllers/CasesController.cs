@@ -58,6 +58,7 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         var now = DateTimeOffset.UtcNow;
         var query = db.ServiceRequests.AsNoTracking().AsQueryable();
         if (User.IsInRole(CivicFlowRoles.Resident)) query = query.Where(x => x.ResidentId == User.UserId());
+        else if (User.IsInRole(CivicFlowRoles.CaseOfficer)) query = query.Where(x => x.AssignedOfficerId == User.UserId());
         else if (request.Mine) query = query.Where(x => x.AssignedOfficerId == User.UserId());
         query = CaseQuery.Apply(query, request, now);
 
@@ -84,7 +85,8 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
     {
         var item = await db.ServiceRequests.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
         if (item is null) return NotFound();
-        if (User.IsInRole(CivicFlowRoles.Resident) && item.ResidentId != User.UserId()) return Forbid();
+        if (User.IsInRole(CivicFlowRoles.Resident) && item.ResidentId != User.UserId()) return NotFound();
+        if (User.IsInRole(CivicFlowRoles.CaseOfficer) && item.AssignedOfficerId != User.UserId()) return NotFound();
         var category = await db.ServiceCategories.AsNoTracking().SingleAsync(x => x.Id == item.ServiceCategoryId);
         var officer = item.AssignedOfficerId.HasValue
             ? await db.Users.AsNoTracking().Where(x => x.Id == item.AssignedOfficerId)
@@ -275,6 +277,13 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         ValidateText(nameof(request.Title), request.Title, 5, 150);
         ValidateText(nameof(request.Description), request.Description, 20, 2000);
         ValidateText(nameof(request.Address), request.Address, 5, 300, "Location");
+        if (request.Latitude.HasValue != request.Longitude.HasValue)
+        {
+            ModelState.AddModelError(nameof(request.Latitude), "Latitude and longitude must be provided together.");
+            ModelState.AddModelError(nameof(request.Longitude), "Latitude and longitude must be provided together.");
+        }
+        if (request.Latitude is < -90 or > 90) ModelState.AddModelError(nameof(request.Latitude), "Latitude must be between -90 and 90.");
+        if (request.Longitude is < -180 or > 180) ModelState.AddModelError(nameof(request.Longitude), "Longitude must be between -180 and 180.");
     }
 
     private void ValidateText(string field, string? value, int min, int max, string? label = null)
@@ -314,7 +323,8 @@ public sealed record CaseListItem(
     Guid? AssignedOfficerId, string? AssignedOfficerName, DateTimeOffset SubmittedAtUtc,
     DateTimeOffset? FirstResponseDueAtUtc, DateTimeOffset? FirstResponseCompletedAtUtc,
     DateTimeOffset? ResolutionDueAtUtc, DateTimeOffset? UpdatedAtUtc, string FirstResponseSlaState,
-    string ResolutionSlaState, string SlaState, DateTimeOffset? NextSlaDueAtUtc, string? NextSlaTarget)
+    string ResolutionSlaState, string SlaState, DateTimeOffset? NextSlaDueAtUtc, string? NextSlaTarget,
+    decimal? Latitude, decimal? Longitude)
 {
     public static CaseListItem From(ServiceRequest item, string categoryName, string? officerName,
         DateTimeOffset now, bool includeDetails = false) => new(item.Id, item.ReferenceNumber, item.Title,
@@ -323,5 +333,6 @@ public sealed record CaseListItem(
         item.AssignedOfficerId, officerName, item.SubmittedAtUtc, item.FirstResponseDueAtUtc,
         item.FirstResponseCompletedAtUtc, item.ResolutionDueAtUtc, item.UpdatedAtUtc,
         SlaCalculator.FirstResponseState(item, now), SlaCalculator.ResolutionState(item, now),
-        CaseQuery.SlaState(item, now), SlaCalculator.NextDue(item), SlaCalculator.NextTarget(item));
+        CaseQuery.SlaState(item, now), SlaCalculator.NextDue(item), SlaCalculator.NextTarget(item),
+        includeDetails ? item.Latitude : null, includeDetails ? item.Longitude : null);
 }
