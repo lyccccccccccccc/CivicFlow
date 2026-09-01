@@ -7,12 +7,13 @@ using CivicFlow.Infrastructure.Identity;
 using CivicFlow.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace CivicFlow.Api.Controllers;
 
 [ApiController, Authorize, Route("api/cases/{caseId:guid}/attachments")]
-public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage storage) : ControllerBase
+public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage storage, ILogger<AttachmentsController> logger) : ControllerBase
 {
     private static readonly ServiceRequestStatus[] ResidentEditableStatuses =
     [ServiceRequestStatus.Submitted, ServiceRequestStatus.Triaged, ServiceRequestStatus.Assigned, ServiceRequestStatus.InProgress, ServiceRequestStatus.WaitingForResident, ServiceRequestStatus.Reopened];
@@ -39,20 +40,50 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         var operationKey = string.IsNullOrWhiteSpace(idempotency) ? null : $"attachment:{caseId}:{idempotency}";
         if (operationKey is not null && await db.CaseActivities.AnyAsync(x => x.ActorId == User.UserId() && x.OperationKey == operationKey)) return NoContent();
         if (await db.CaseAttachments.CountAsync(x => x.ServiceRequestId == caseId && !x.IsDeleted) >= 5)
-            return BadRequest(new { message = "A case can have at most five active attachments." });
+            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "Attachment limit reached",
+                Detail = "A case can have at most five active attachments." });
 
         ValidatedAttachment validated;
         try { validated = await AttachmentFileValidator.ValidateAsync(file, HttpContext.RequestAborted); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
         await using var content = validated.Content;
         var attachmentId = Guid.NewGuid(); var storageKey = $"cases/{caseId:N}/{attachmentId:N}";
-        await storage.StoreAsync(storageKey, content, validated.ContentType,
-            new Dictionary<string, string> { ["caseid"] = caseId.ToString("N"), ["attachmentid"] = attachmentId.ToString("N") }, HttpContext.RequestAborted);
         try
         {
-            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable) : null;
+            await storage.StoreAsync(storageKey, content, validated.ContentType,
+                new Dictionary<string, string> { ["caseid"] = caseId.ToString("N"), ["attachmentid"] = attachmentId.ToString("N") }, HttpContext.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Attachment storage failed for case {CaseId}; compensating the randomized object key.", caseId);
+            await CompensateBlobAsync(storageKey);
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Attachment storage unavailable",
+                detail: "The attachment could not be stored. Please retry.");
+        }
+        try
+        {
+            var isolation = db.Database.IsSqlServer() ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
+            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(isolation) : null;
+            if (db.Database.IsSqlServer())
+            {
+                var lockResource = $"CivicFlow.AttachmentUpload:{caseId:N}";
+                await db.Database.ExecuteSqlInterpolatedAsync($$"""
+                    DECLARE @lockResult int;
+                    EXEC @lockResult = sp_getapplock
+                        @Resource={{lockResource}}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000;
+                    IF @lockResult < 0 THROW 51000, 'Unable to acquire the case attachment lock.', 1;
+                    """);
+            }
             if (await db.CaseAttachments.CountAsync(x => x.ServiceRequestId == caseId && !x.IsDeleted) >= 5)
-                throw new InvalidOperationException("A case can have at most five active attachments.");
+            {
+                if (transaction is not null) await transaction.RollbackAsync();
+                var compensated = await CompensateBlobAsync(storageKey);
+                if (!compensated)
+                    return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Attachment cleanup pending",
+                        detail: "The attachment was not accepted and cleanup will be retried.");
+                return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "Attachment limit reached",
+                    Detail = "A case can have at most five active attachments." });
+            }
             var now = DateTimeOffset.UtcNow;
             var attachment = CaseAttachment.Create(attachmentId, caseId, User.UserId(), validated.FileName, storageKey, validated.ContentType, validated.SizeBytes, validated.Sha256, visibility, now);
             db.CaseAttachments.Add(attachment);
@@ -62,9 +93,23 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
             await db.SaveChangesAsync(); if (transaction is not null) await transaction.CommitAsync();
             return CreatedAtAction(nameof(List), new { caseId }, ToDto(attachment));
         }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(ex, "Attachment database write failed for case {CaseId}; the blob will be compensated.", caseId);
+            await CompensateBlobAsync(storageKey);
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Attachment could not be saved",
+                detail: "The attachment was not saved. Please retry.");
+        }
+        catch (SqlException ex)
+        {
+            logger.LogError(ex, "Attachment SQL operation failed for case {CaseId}; the blob will be compensated.", caseId);
+            await CompensateBlobAsync(storageKey);
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Attachment service temporarily unavailable",
+                detail: "The attachment was not saved. Please retry.");
+        }
         catch
         {
-            await storage.DeleteIfExistsAsync(storageKey, CancellationToken.None);
+            await CompensateBlobAsync(storageKey);
             throw;
         }
     }
@@ -108,6 +153,17 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         if (recipient.HasValue && recipient != User.UserId())
             db.UserNotifications.Add(new(recipient.Value, item.Id, "Attachment added", $"{item.ReferenceNumber}: A public attachment was added.", DateTimeOffset.UtcNow, activity.Id.ToString()));
     }
+
+    private async Task<bool> CompensateBlobAsync(string storageKey)
+    {
+        try { await storage.DeleteIfExistsAsync(storageKey, CancellationToken.None); return true; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Attachment blob compensation failed; orphan reconciliation will retry.");
+            return false;
+        }
+    }
+
     private static AttachmentDto ToDto(CaseAttachment x) => new(x.Id, x.OriginalFileName, x.ContentType, x.SizeBytes, x.Visibility.ToString(), x.UploadedAtUtc, x.UploadedByUserId);
 }
 

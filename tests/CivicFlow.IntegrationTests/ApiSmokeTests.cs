@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using CivicFlow.Application.Storage;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
+using CivicFlow.Api.Background;
 
 namespace CivicFlow.IntegrationTests;
 
@@ -46,6 +48,13 @@ public sealed class CivicFlowFactory : WebApplicationFactory<Program>
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
+            // Multiple WebApplicationFactory instances intentionally share the real SQL test database.
+            // Background monitors are exercised separately; running one per fixture would race on shared
+            // notifications and mutate unrelated test state while the API request suite runs in parallel.
+            foreach (var descriptor in services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                         x.ImplementationType is not null &&
+                         (x.ImplementationType == typeof(SlaMonitorWorker) || x.ImplementationType == typeof(AttachmentCleanupWorker))).ToArray())
+                services.Remove(descriptor);
             services.RemoveAll<DbContextOptions<ApplicationDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<ApplicationDbContext>>();
             services.RemoveAll<ApplicationDbContext>();
