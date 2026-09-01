@@ -26,6 +26,8 @@ Each category has configurable first-response and resolution targets.
 - In-application notifications
 - Audit history
 - Manager dashboard and CSV export
+- Private JPG/PNG/PDF attachments with lifecycle authorization
+- Optional map coordinates and read-only case maps
 
 ## Deliberately excluded from MVP
 
@@ -37,7 +39,6 @@ Each category has configurable first-response and resolution targets.
 - Multi-agency transfers
 - Multilingual content
 - Microservices and Kubernetes
-- File/photo attachments (planned after the core workflow)
 - Satisfaction surveys
 
 ## Success criteria

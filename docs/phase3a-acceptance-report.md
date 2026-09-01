@@ -90,12 +90,7 @@ Successful attachment upload and soft deletion generate immutable audit activity
 
 SQL Server, Azurite, API, and frontend were restarted without deleting or recreating volumes. Users, roles, cases, categories, activities, attachments, SLA fields, coordinates, assignment, resolution/reopen history, and migration history remained intact. Active attachment downloads retained the correct filename and content type. Internal attachments remained staff-only. Soft-deleted attachments remained absent from normal API lists while their Blobs remained stored for retention cleanup.
 
-The final external database backup is stored outside the Git repository:
-
-- Path: `REDACTED_LOCAL_PATH`
-- Size: `909,312 bytes`
-- SHA-256: `A99E5088159C4253C394D4D7C7104EC8BBB1F87B582E93D6B038A6BFD6A4AEAC`
-- SQL Server `RESTORE VERIFYONLY WITH CHECKSUM`: passed
+The final database backup is retained in an external, repository-excluded location. Its size and SHA-256 were recorded in private operational evidence, and SQL Server `RESTORE VERIFYONLY WITH CHECKSUM` passed. Machine-local paths and backup fingerprints are intentionally omitted from this public report.
 
 No backup file, local storage data, key, token, connection secret, or private Blob address is committed to Git.
 

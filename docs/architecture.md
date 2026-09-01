@@ -1,5 +1,54 @@
 # CivicFlow architecture decisions
 
+```mermaid
+flowchart TB
+    Client[React / TypeScript client] --> API[ASP.NET Core API]
+    API --> Application[Application contracts]
+    API --> Infrastructure[Infrastructure adapters]
+    Infrastructure --> Domain[Domain entities and workflow]
+    Infrastructure --> Database[(SQL Server)]
+    Infrastructure --> Files[(Private Blob storage)]
+```
+
+## Data model overview
+
+```mermaid
+erDiagram
+    ApplicationUser ||--o{ ServiceRequest : submits
+    ApplicationUser ||--o{ ServiceRequest : assigned_to
+    ServiceCategory ||--o{ ServiceRequest : classifies
+    ServiceRequest ||--o{ CaseActivity : records
+    ServiceRequest ||--o{ CaseAttachment : contains
+    ApplicationUser ||--o{ CaseAttachment : uploads
+    ApplicationUser ||--o{ UserNotification : receives
+    ServiceRequest ||--o{ UserNotification : concerns
+
+    ServiceRequest {
+      guid Id PK
+      string Reference
+      string Status
+      datetime SubmittedAtUtc
+      datetime FirstResponseDueUtc
+      datetime ResolutionDueUtc
+      decimal Latitude
+      decimal Longitude
+    }
+    CaseAttachment {
+      guid Id PK
+      guid ServiceRequestId FK
+      guid UploadedByUserId FK
+      string Visibility
+      bool IsDeleted
+    }
+    CaseActivity {
+      guid Id PK
+      guid ServiceRequestId FK
+      string Type
+      string Visibility
+      datetime CreatedAtUtc
+    }
+```
+
 ## 1. Modular monolith
 
 CivicFlow begins as a modular monolith. The project needs clear boundaries and maintainability, but its portfolio-sized workload does not justify distributed deployment, messaging infrastructure or microservice failure modes.
