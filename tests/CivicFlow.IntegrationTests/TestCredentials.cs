@@ -2,5 +2,5 @@ namespace CivicFlow.IntegrationTests;
 
 internal static class TestCredentials
 {
-    internal const string Password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET";
+    internal static readonly string Password = $"Integration-Aa1!{Guid.NewGuid():N}";
 }
