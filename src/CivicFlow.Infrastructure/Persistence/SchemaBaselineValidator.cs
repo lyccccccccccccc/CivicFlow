@@ -25,7 +25,9 @@ public sealed class SchemaBaselineValidator(ApplicationDbContext db)
     private HashSet<string> ExpectedSchema()
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var table in db.Model.GetRelationalModel().Tables)
+        // Baseline validation must remain frozen at phase-2-complete even after the runtime
+        // model grows. Phase 3 tables are applied only after the Initial migration is recorded.
+        foreach (var table in db.Model.GetRelationalModel().Tables.Where(x => x.Name != "CaseAttachments"))
         {
             var tableName = Name(table.Schema, table.Name);
             result.Add($"table|{tableName}");
