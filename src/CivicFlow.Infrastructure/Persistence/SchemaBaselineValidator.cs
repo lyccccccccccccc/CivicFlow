@@ -93,7 +93,7 @@ public sealed class SchemaBaselineValidator(ApplicationDbContext db)
             JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id
             JOIN sys.columns pc ON pc.object_id=pt.object_id AND pc.column_id=fkc.parent_column_id
             JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id
-            GROUP BY ps.name,pt.name,rs.name,rt.name,fk.delete_referential_action_desc
+            GROUP BY fk.object_id,ps.name,pt.name,rs.name,rt.name,fk.delete_referential_action_desc
             """, reader => result.Add($"fk|{Name(reader.GetString(0), reader.GetString(1))}|{reader.GetString(2)}|{Name(reader.GetString(3), reader.GetString(4))}|{reader.GetString(5)}|{reader.GetString(6)}"), cancellationToken);
         return result;
     }
@@ -107,7 +107,7 @@ public sealed class SchemaBaselineValidator(ApplicationDbContext db)
 
     private static string Name(string? schema, string table) => $"{schema ?? "dbo"}.{table}";
     private static string NormalizeType(string value) => value.Replace(" ", string.Empty).ToLowerInvariant();
-    private static string NormalizeFilter(string? value) => (value ?? string.Empty).Replace("[", string.Empty).Replace("]", string.Empty).Replace(" ", string.Empty).ToLowerInvariant();
+    private static string NormalizeFilter(string? value) => (value ?? string.Empty).Replace("[", string.Empty).Replace("]", string.Empty).Replace("(", string.Empty).Replace(")", string.Empty).Replace(" ", string.Empty).ToLowerInvariant();
     private static string DeleteAction(ReferentialAction action) => action switch
     {
         ReferentialAction.Cascade => "CASCADE", ReferentialAction.SetNull => "SET_NULL",

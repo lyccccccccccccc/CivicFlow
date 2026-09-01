@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -32,7 +33,7 @@ public static class LegacyDatabaseBaseline
         if (!result.IsValid)
             throw new InvalidOperationException("Legacy database schema does not match the Phase 2 baseline:\n" + string.Join('\n', result.Differences));
 
-        var history = scope.ServiceProvider.GetRequiredService<IHistoryRepository>();
+        var history = db.GetService<IHistoryRepository>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.Database.ExecuteSqlRawAsync("EXEC sp_getapplock @Resource='CivicFlow.EFMigrationBaseline', @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=60000", cancellationToken);
         await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript(), cancellationToken);
