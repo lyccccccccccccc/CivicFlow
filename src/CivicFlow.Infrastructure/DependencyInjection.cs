@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using CivicFlow.Application.Storage;
+using CivicFlow.Infrastructure.Storage;
 
 namespace CivicFlow.Infrastructure;
 
@@ -21,6 +23,8 @@ public static class DependencyInjection
             options.UseSqlServer(connectionString));
         services.Configure<DatabaseMigrationOptions>(configuration.GetSection(DatabaseMigrationOptions.SectionName));
         services.AddScoped<SchemaBaselineValidator>();
+        services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+        services.AddSingleton<IFileStorage, AzureBlobFileStorage>();
 
         services
             .AddIdentityCore<ApplicationUser>(options =>
