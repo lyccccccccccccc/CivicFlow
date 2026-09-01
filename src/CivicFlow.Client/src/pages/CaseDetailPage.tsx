@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, type Activity, type CaseDetail, type Officer } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { CaseMap } from '../components/CaseMap'
+import { CaseAttachments } from '../components/CaseAttachments'
 
 const priorities = ['Low', 'Medium', 'High', 'Critical']
 
@@ -30,6 +31,7 @@ export function CaseDetailPage() {
   return <Stack spacing={3}><Box><Typography variant="overline" color="primary">{item.referenceNumber}</Typography><Typography variant="h3">{item.title}</Typography><Stack direction="row" spacing={1} useFlexGap sx={{ mt: 1, flexWrap: 'wrap' }}><Chip label={format(item.status)} color="primary" /><Chip label={`${item.priority} priority`} variant="outlined" /><Chip label={item.slaState === 'Complete' ? 'Overall SLA · Complete' : `Overall SLA · ${format(item.slaState)} · ${item.nextSlaTarget ?? 'Target'} ${slaRemaining(item.nextSlaDueAtUtc)}`} color={item.slaState === 'Overdue' ? 'error' : item.slaState === 'AtRisk' ? 'warning' : 'default'} /></Stack></Box>
     {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
     <Grid container spacing={3}><Grid size={{ xs: 12, md: 8 }}><Stack spacing={3}><Paper sx={{ p: 3 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Request details</Typography><Divider sx={{ my: 2 }} /><Typography sx={{ whiteSpace: 'pre-wrap' }}>{item.description}</Typography><Typography color="text.secondary" sx={{ mt: 2 }}><strong>Location:</strong> {item.address}</Typography><Typography color="text.secondary"><strong>Category:</strong> {detail.category.name}</Typography><Typography color="text.secondary"><strong>Assigned officer:</strong> {item.assignedOfficerName ?? 'Unassigned'}</Typography><CaseMap latitude={item.latitude} longitude={item.longitude} /></Paper>
+      <CaseAttachments caseId={item.id} status={item.status} resident={Boolean(resident)} canEdit={Boolean(resident || canManage || (isOfficer && assignedToMe))} />
       {resident && <Feed title="Request progress" items={detail.activities.filter(a => a.section === 'progress')} />}
       <Feed title="Conversation" items={detail.activities.filter(a => a.section === 'conversation')} />
       {!resident && <><Feed title="Internal notes" items={detail.activities.filter(a => a.section === 'internal')} /><Feed title="Case activity" items={detail.activities.filter(a => a.section === 'progress')} /></>}

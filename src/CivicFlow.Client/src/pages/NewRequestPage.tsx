@@ -1,15 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Alert, Button, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
-import { api, type Category } from '../api/client'
+import { api, uploadAttachment, type Category } from '../api/client'
 import { MapPicker, type MapPoint } from '../components/MapPicker'
 
 export function NewRequestPage() {
   const navigate = useNavigate(); const [categories, setCategories] = useState<Category[]>([])
   const [form, setForm] = useState({ categoryId: '', title: '', description: '', address: '' }); const [error, setError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(false)
   const [location, setLocation] = useState<MapPoint>()
+  const [files, setFiles] = useState<File[]>([]); const [createdCaseId, setCreatedCaseId] = useState('')
   useEffect(() => { api<Category[]>('/categories').then(setCategories).catch(() => setError('Unable to load service categories.')) }, [])
-  const submit = async (event: FormEvent) => { event.preventDefault(); const validation = validate(form); setErrors(validation); if (Object.keys(validation).length) return; setBusy(true); setError(''); try { const created = await api<{ id: string }>('/cases', { method: 'POST', body: JSON.stringify({ ...form, title: form.title.trim(), description: form.description.trim(), address: form.address.trim(), ...location }) }); navigate(`/cases/${created.id}`) } catch (e) { setError(e instanceof Error ? e.message : 'Unable to submit request') } finally { setBusy(false) } }
+  const uploadFiles = async (caseId: string) => { const failed: File[] = []; for (const file of files) { try { await uploadAttachment(caseId, file, 'Public', crypto.randomUUID()) } catch { failed.push(file) } } setFiles(failed); if (failed.length) { setCreatedCaseId(caseId); throw new Error(`Request created, but ${failed.length} attachment${failed.length === 1 ? '' : 's'} failed. Retry below or open the request.`) } navigate(`/cases/${caseId}`) }
+  const submit = async (event: FormEvent) => { event.preventDefault(); const validation = validate(form); setErrors(validation); if (Object.keys(validation).length) return; setBusy(true); setError(''); try { const created = await api<{ id: string }>('/cases', { method: 'POST', body: JSON.stringify({ ...form, title: form.title.trim(), description: form.description.trim(), address: form.address.trim(), ...location }) }); await uploadFiles(created.id) } catch (e) { setError(e instanceof Error ? e.message : 'Unable to submit request') } finally { setBusy(false) } }
+  const chooseFiles = (selected: FileList | null) => { const next = Array.from(selected ?? []).slice(0, 5); const invalid = next.find(file => file.size > 10 * 1024 * 1024); if (invalid) { setError(`${invalid.name} exceeds the 10 MB limit.`); return } setFiles(next); setError('') }
+  const retry = async () => { if (!createdCaseId) return; setBusy(true); setError(''); try { await uploadFiles(createdCaseId) } catch (e) { setError(e instanceof Error ? e.message : 'Attachment retry failed.') } finally { setBusy(false) } }
   return <Paper sx={{ maxWidth: 760, mx: 'auto', p: { xs: 3, md: 5 } }}><Typography variant="h3">Submit a service request</Typography><Typography color="text.secondary" sx={{ mb: 4 }}>Provide clear details so the right team can respond quickly.</Typography>
     <Stack component="form" spacing={3} onSubmit={submit} noValidate>{error && <Alert severity="error">{error}</Alert>}
       <TextField select label="Service category" value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })} error={Boolean(errors.categoryId)} helperText={errors.categoryId} required>{categories.map(c => <MenuItem key={c.id} value={c.id}><Stack><span>{c.name}</span><Typography variant="caption" color="text.secondary">{c.description}</Typography></Stack></MenuItem>)}</TextField>
@@ -17,8 +21,9 @@ export function NewRequestPage() {
       <TextField label="What happened?" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} multiline minRows={5} slotProps={{ htmlInput: { maxLength: 2000 } }} error={Boolean(errors.description)} helperText={errors.description ?? '20–2000 characters. Include what you observed and any safety risk.'} required />
       <TextField label="Location or street address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} slotProps={{ htmlInput: { maxLength: 300 } }} error={Boolean(errors.address)} helperText={errors.address ?? '5–300 characters'} required />
       <MapPicker value={location} onChange={setLocation} />
-      <Alert severity="info">Do not include sensitive personal information. You can add photos or a PDF after the request is created.</Alert>
-      <Stack direction="row" spacing={2} sx={{ justifyContent: 'flex-end' }}><Button onClick={() => navigate(-1)}>Cancel</Button><Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Submitting…' : 'Submit request'}</Button></Stack>
+      <Stack spacing={1}><Typography sx={{ fontWeight: 700 }}>Photos or PDF (optional)</Typography><Button component="label" variant="outlined">Choose up to 5 files<input hidden multiple type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={e => chooseFiles(e.target.files)} /></Button>{files.map(file => <Typography key={`${file.name}-${file.lastModified}`} variant="body2">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</Typography>)}</Stack>
+      <Alert severity="info">The request is created first, then attachments upload individually. A failed file can be retried without losing the request.</Alert>
+      {createdCaseId ? <Stack direction="row" spacing={2} sx={{ justifyContent: 'flex-end' }}><Button onClick={() => navigate(`/cases/${createdCaseId}`)}>Open request</Button><Button variant="contained" disabled={busy || files.length === 0} onClick={() => void retry()}>{busy ? 'Retrying…' : 'Retry attachments'}</Button></Stack> : <Stack direction="row" spacing={2} sx={{ justifyContent: 'flex-end' }}><Button onClick={() => navigate(-1)}>Cancel</Button><Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Submitting…' : 'Submit request'}</Button></Stack>}
     </Stack></Paper>
 }
 
