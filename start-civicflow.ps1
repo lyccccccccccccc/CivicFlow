@@ -26,9 +26,17 @@ for ($attempt = 1; $attempt -le 30; $attempt++) {
 }
 if ($health -ne "healthy") { throw "SQL Server did not become healthy. Check Docker Desktop and retry." }
 
+Write-Host "Waiting for Azurite..." -ForegroundColor Cyan
+for ($attempt = 1; $attempt -le 30; $attempt++) {
+    $blobHealth = docker inspect --format '{{.State.Health.Status}}' civicflow-azurite 2>$null
+    if ($blobHealth -eq "healthy") { break }
+    Start-Sleep -Seconds 1
+}
+if ($blobHealth -ne "healthy") { throw "Azurite did not become healthy. Check Docker Desktop and retry." }
+
 $apiCommand = @"
 `$env:ASPNETCORE_ENVIRONMENT='Development'
-`$env:ConnectionStrings__CivicFlowDatabase='Server=localhost,1433;Database=CivicFlow;User Id=sa;Password=$databasePassword;TrustServerCertificate=True'
+`$env:ConnectionStrings__CivicFlowDatabase='Server=localhost,1433;Database=CivicFlow;User Id=sa;Password=$databasePassword;Encrypt=False;TrustServerCertificate=True'
 dotnet run --project '$ProjectRoot\src\CivicFlow.Api'
 "@
 

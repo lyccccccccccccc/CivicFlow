@@ -12,6 +12,7 @@ Base URL: `http://localhost:5168/api`. Protected routes require `Authorization: 
 | Assignment | `POST /cases/{id}/assign`, `GET /officers` | Manager/Admin |
 | Workflow | `POST /cases/{id}/status` | Staff; resident may reopen own resolved case |
 | Communication | `POST /cases/{id}/comments` | Authenticated; internal option for staff |
+| Attachments | `GET/POST /cases/{id}/attachments`, `GET /cases/{id}/attachments/{attachmentId}/content`, `DELETE /cases/{id}/attachments/{attachmentId}` | Case owner or authorised staff; officer must be assigned |
 | Notifications | `GET /notifications`, `POST /notifications/{id}/read` | Authenticated |
 | Reporting | `GET /dashboard` | Staff; supports date, category, priority, status and officer filters |
 | CSV report | `GET /reports/cases.csv` | Manager/Admin; accepts dashboard filters |
@@ -36,5 +37,9 @@ Exports above 5000 matching cases are rejected with 400 (narrow the filters), ne
 - **Active workload** means assigned cases whose status is neither Resolved, Closed nor Rejected. `GET /dashboard` exposes `activeWorkload`, `activeWorkloadDefinition` and `officerWorkload`. All use the database `CaseQuery.ActiveWorkload` predicate and current filters. CSV uses the identical predicate for its `Active workload` column (1/0); sum this column per officer to reproduce the chart. Resolved cases remain in an unfiltered case export with value 0.
 
 `POST /cases` validates trimmed values and returns Problem Details with field-keyed `errors`: title 5–150, description 20–2000, address/location 5–300, and an existing active category. Successful requests trim those three text values before persistence and create both SLA due dates immediately.
+
+`POST /cases` also accepts optional `latitude` and `longitude`; they must be provided together within -90…90 and -180…180. Case detail returns coordinates only after the same owner/staff authorization used for all other case data.
+
+Attachment upload is `multipart/form-data` with `file` and `visibility` (`Public` or `Internal`) plus an `Idempotency-Key` header. JPG/JPEG, PNG and PDF are accepted, up to 10 MB each and five active files per case. Resident uploads are Public only and are limited to editable workflow states. Attachment DTOs intentionally omit storage key and SHA-256. Downloads return `nosniff`, safe `Content-Disposition`, `Content-Length` and SHA-256 ETag headers; PDFs download as attachments. Unauthorized or cross-resident access returns 404. Delete bodies require `{ "reason": "10–500 characters" }` and perform audited soft deletion.
 
 `GET /cases` performs filtering, sorting and pagination in the database. Supported query parameters include `page`, `pageSize`, `search`, `priority`, `status`, `categoryId`, `officerId`, `unassigned`, `slaState`, `dueFrom`, `dueTo`, `submittedFrom`, `submittedTo`, `quickView`, `mine`, `sortBy` and `sortDirection`. It returns `{ items, page, pageSize, totalCount, totalPages }`.

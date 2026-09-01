@@ -18,6 +18,8 @@ public sealed class ApplicationDbContext(
 
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
 
+    public DbSet<CaseAttachment> CaseAttachments => Set<CaseAttachment>();
+
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     private void EnsureAuditAppendOnly()

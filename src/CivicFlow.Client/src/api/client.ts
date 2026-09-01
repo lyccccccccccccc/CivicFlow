@@ -4,9 +4,10 @@ export type User = { id: string; email: string; firstName: string; lastName: str
 export type AuthResponse = { accessToken: string; refreshToken: string; expiresAt: string; user: User }
 export type Category = { id: string; name: string; description: string; firstResponseHours: number; resolutionHours: number; isActive: boolean }
 export type Officer = { id: string; firstName: string; lastName: string; email?: string }
-export type CaseItem = { id: string; referenceNumber: string; title: string; description: string; address: string; serviceCategoryId: string; categoryName: string; status: string; priority: string; assignedOfficerId?: string; assignedOfficerName?: string; submittedAtUtc: string; firstResponseDueAtUtc?: string; firstResponseCompletedAtUtc?: string; resolutionDueAtUtc?: string; updatedAtUtc?: string; firstResponseSlaState: string; resolutionSlaState: string; slaState: string; nextSlaDueAtUtc?: string; nextSlaTarget?: string }
+export type CaseItem = { id: string; referenceNumber: string; title: string; description: string; address: string; latitude?: number; longitude?: number; serviceCategoryId: string; categoryName: string; status: string; priority: string; assignedOfficerId?: string; assignedOfficerName?: string; submittedAtUtc: string; firstResponseDueAtUtc?: string; firstResponseCompletedAtUtc?: string; resolutionDueAtUtc?: string; updatedAtUtc?: string; firstResponseSlaState: string; resolutionSlaState: string; slaState: string; nextSlaDueAtUtc?: string; nextSlaTarget?: string }
 export type CaseDetail = { case: CaseItem; category: { id: string; name: string; firstResponseHours: number; resolutionHours: number }; assignedOfficer?: { id: string; name: string; email: string }; activities: Activity[] }
 export type Activity = { id: string; type: string; label: string; section: 'conversation' | 'internal' | 'progress'; message: string; isPublic: boolean; createdAtUtc: string; actorName?: string }
+export type CaseAttachment = { id: string; originalFileName: string; contentType: string; sizeBytes: number; visibility: 'Public' | 'Internal'; uploadedAtUtc: string; uploadedByUserId: string }
 export type PagedResponse<T> = { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number }
 export type ChartRow = { label: string; count: number }
 export type DashboardData = { open: number; unassigned: number; atRisk: number; overdue: number; firstResponseBreached: number; waitingForResident: number; resolved: number; byStatus: ChartRow[]; byPriority: ChartRow[]; byCategory: ChartRow[]; officerWorkload: ChartRow[]; slaCases: Pick<CaseItem, 'id' | 'referenceNumber' | 'title' | 'priority' | 'status' | 'firstResponseDueAtUtc' | 'firstResponseCompletedAtUtc' | 'resolutionDueAtUtc' | 'categoryName' | 'firstResponseSlaState' | 'resolutionSlaState' | 'slaState' | 'nextSlaDueAtUtc' | 'nextSlaTarget'>[] }
@@ -17,9 +18,12 @@ function savedAuth(): AuthResponse | null {
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const auth = savedAuth()
+  const headers = new Headers(options.headers)
+  if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
+  if (auth) headers.set('Authorization', `Bearer ${auth.accessToken}`)
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth.accessToken}` } : {}), ...options.headers },
+    headers,
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { message?: string; detail?: string; title?: string; errors?: Record<string, string[]> }
@@ -28,6 +32,11 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
+}
+
+export async function uploadAttachment(caseId: string, file: File, visibility: 'Public' | 'Internal', idempotencyKey: string) {
+  const form = new FormData(); form.append('file', file); form.append('visibility', visibility)
+  return api<CaseAttachment>(`/cases/${caseId}/attachments`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: form })
 }
 
 export async function apiDownload(path: string, fileName: string) {

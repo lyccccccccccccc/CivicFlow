@@ -9,6 +9,7 @@ CivicFlow is a full-stack community service request and case management portfoli
 - Resident registration, JWT login, refresh-token rotation and role-based access
 - Four roles: Resident, Case Officer, Team Manager and System Administrator
 - Service request creation, search, detail view and ownership enforcement
+- Private JPG/PNG/PDF case attachments and optional map coordinates
 - Domain-enforced workflow: submitted, triaged, assigned, in progress, waiting, resolved, closed, reopened and rejected
 - Category-based first-response and resolution SLA targets
 - Manager assignment, officer case actions and operational metrics
@@ -22,10 +23,10 @@ CivicFlow is a full-stack community service request and case management portfoli
 
 | Layer | Technology |
 | --- | --- |
-| Client | React 19, TypeScript, Vite, Material UI, React Router |
+| Client | React 19, TypeScript, Vite, Material UI, React Router, React Leaflet |
 | API | C# 14, ASP.NET Core 10 Controller API |
 | Identity | ASP.NET Core Identity, JWT bearer tokens, rotating refresh tokens |
-| Data | SQL Server 2022, Entity Framework Core 10 |
+| Data | SQL Server 2022, Entity Framework Core 10 migrations, private Azure Blob-compatible storage |
 | Tests | xUnit |
 | Delivery | Docker Compose, GitHub Actions |
 
@@ -40,7 +41,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\start-civicflow.ps1
 ```
 
-The script starts SQL Server, the API and the client, then opens `http://localhost:5173`. The database is created and seeded automatically on first run. Use `stop-civicflow.ps1` to stop the database container.
+The script starts SQL Server, Azurite, the API and the client, then opens `http://localhost:5173`. EF Core migrations create a new database and development seed data is idempotent. Use `stop-civicflow.ps1` to stop the containers.
 
 ## Demo accounts
 
@@ -82,6 +83,9 @@ The back end is a modular monolith with dependency direction `API → Infrastruc
 
 - The API enforces authorization; UI visibility is not treated as security.
 - Residents can access only their own cases, and internal notes are excluded from resident responses.
+- Blob containers are private. Every attachment list/download/delete passes through case authorization; storage keys and hashes are never returned.
+- File type, size, signature and image decode/pixel limits are validated. **Malware scanning is not included in Phase 3A and is mandatory before production launch.**
 - Refresh tokens are cryptographically random and stored as SHA-256 hashes.
 - The committed signing key, seeded passwords and launcher database password are development-only values. Replace all of them and use environment variables or a secret store before deployment.
-- `EnsureCreated` is intentionally used for the self-contained portfolio demo. Production deployments should use reviewed EF Core migrations.
+- `EnsureCreated`/`EnsureDeleted` are not used. Development/test may run `MigrateAsync`; production must apply a reviewed migration bundle before startup.
+- OpenStreetMap is the configurable local/low-volume tile provider. Production deployments must review tile-provider usage policy and can replace it through `VITE_MAP_TILE_URL` and `VITE_MAP_ATTRIBUTION`.

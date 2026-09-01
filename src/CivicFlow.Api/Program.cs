@@ -10,6 +10,13 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// The Windows Event Log provider requires elevated source access and can mask the
+// original request exception in local/non-service hosting. Structured console/debug
+// providers work consistently in containers, developer terminals and CI.
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddControllers().AddJsonOptions(options =>
@@ -20,6 +27,8 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddHostedService<SlaMonitorWorker>();
+builder.Services.AddScoped<AttachmentStorageMaintenance>();
+builder.Services.AddHostedService<AttachmentCleanupWorker>();
 
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("JWT settings are missing.");
@@ -65,8 +74,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapControllers();
 
-await DatabaseSeeder.InitialiseAsync(app.Services);
-await Phase2Upgrade.ApplyAsync(app.Services);
+await DatabaseStartup.InitialiseAsync(app.Services);
 
 app.Run();
 
