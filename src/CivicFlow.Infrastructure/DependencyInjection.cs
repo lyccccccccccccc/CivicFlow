@@ -19,6 +19,8 @@ public static class DependencyInjection
 
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlServer(connectionString));
+        services.Configure<DatabaseMigrationOptions>(configuration.GetSection(DatabaseMigrationOptions.SectionName));
+        services.AddScoped<SchemaBaselineValidator>();
 
         services
             .AddIdentityCore<ApplicationUser>(options =>
