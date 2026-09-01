@@ -10,6 +10,13 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// The Windows Event Log provider requires elevated source access and can mask the
+// original request exception in local/non-service hosting. Structured console/debug
+// providers work consistently in containers, developer terminals and CI.
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddControllers().AddJsonOptions(options =>
