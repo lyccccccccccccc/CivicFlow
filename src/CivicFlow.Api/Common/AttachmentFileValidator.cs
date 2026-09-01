@@ -43,7 +43,10 @@ public static class AttachmentFileValidator
         if (!signatureMatches) throw new InvalidOperationException("File signature does not match its declared type.");
         if (expected.StartsWith("image/", StringComparison.Ordinal))
         {
-            using var codec = SKCodec.Create(content);
+            // SKCodec owns and closes streams supplied to Create(Stream). Decode a copy so the
+            // validated stream remains readable for hashing and the storage provider.
+            using var imageData = SKData.CreateCopy(content.ToArray());
+            using var codec = SKCodec.Create(imageData);
             var info = codec?.Info;
             if (info is null || (long)info.Value.Width * info.Value.Height > MaximumPixels)
                 throw new InvalidOperationException("Image cannot be decoded or exceeds the 40 megapixel safety limit.");
