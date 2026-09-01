@@ -31,7 +31,10 @@ public static class DatabaseStartup
         }
 
         if (environment.IsDevelopment() || environment.IsEnvironment("Testing"))
-            await DatabaseSeeder.SeedDevelopmentAsync(scope.ServiceProvider);
+        {
+            if (db.Database.IsSqlServer()) await SeedWithLockAsync(db, scope.ServiceProvider, cancellationToken);
+            else await DatabaseSeeder.SeedDevelopmentAsync(scope.ServiceProvider);
+        }
     }
 
     private static async Task MigrateWithLockAsync(ApplicationDbContext db, CancellationToken cancellationToken)
@@ -45,6 +48,21 @@ public static class DatabaseStartup
         finally
         {
             try { await db.Database.ExecuteSqlRawAsync("EXEC sp_releaseapplock @Resource='CivicFlow.EFCoreMigrations', @LockOwner='Session'", CancellationToken.None); }
+            finally { await db.Database.CloseConnectionAsync(); }
+        }
+    }
+
+    private static async Task SeedWithLockAsync(ApplicationDbContext db, IServiceProvider services, CancellationToken cancellationToken)
+    {
+        await db.Database.OpenConnectionAsync(cancellationToken);
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("EXEC sp_getapplock @Resource='CivicFlow.DevelopmentSeed', @LockMode='Exclusive', @LockOwner='Session', @LockTimeout=60000", cancellationToken);
+            await DatabaseSeeder.SeedDevelopmentAsync(services);
+        }
+        finally
+        {
+            try { await db.Database.ExecuteSqlRawAsync("EXEC sp_releaseapplock @Resource='CivicFlow.DevelopmentSeed', @LockOwner='Session'", CancellationToken.None); }
             finally { await db.Database.CloseConnectionAsync(); }
         }
     }
