@@ -28,6 +28,8 @@ The implementation branch is `feature/phase-3a-attachments-map`, based on the im
 | `8e768e2b58757a038d4f54787d468df0ee99ac92` | Add migration and attachment runbooks |
 | `02c42982554607d7a0c47c1534b8591e9f9ae0db` | Verify attachment failure compensation |
 | `73eddfe382c94eec93b4bbea998fd0d87364eba6` | Enforce attachment lifecycle authorization |
+| `723b7b3fb724e5b7bb7a12109c11b2cc86c6a300` | Add the Phase 3A acceptance report and ignore local operational artifacts |
+| `6e86a071939aee7ba8896e059c1b8267816f88e1` | Stabilize attachment concurrency and real-SQL test isolation |
 
 ## EF Core migrations and legacy upgrade
 
@@ -100,18 +102,31 @@ No backup file, local storage data, key, token, connection secret, or private Bl
 ## Automated and browser acceptance
 
 - Release restore and build: passed with zero compiler warnings and errors.
-- Unit tests: 11 passed.
-- Integration tests: 34 passed in the isolated provider and 34 passed against real SQL Server.
+- Unit tests: 11 of 11 passed.
+- Isolated integration tests: 36 of 36 passed.
+- Real SQL Server integration tests: three consecutive complete runs passed, 36 of 36 in each run.
 - Real SQL Server and Azurite API persistence, authorization, list, download, soft-delete, and Blob-retention checks: passed.
 - Frontend ESLint and production build: passed.
 - Resident, Officer, Manager, and Administrator browser acceptance: passed; each role opened its list and the acceptance case detail with zero console errors.
 - Git whitespace validation: passed.
 
-The acceptance suite includes new-database migration, legacy no-loss upgrade, repeat migration startup, attachment format/size/count/signature checks, cross-resident isolation, Internal visibility, storage/database failure compensation, coordinate validation, and Phase 2 regression coverage.
+The acceptance suite includes new-database migration, legacy no-loss upgrade, repeat migration startup, attachment format/size/count/signature checks, cross-resident isolation, Internal visibility, storage/database failure compensation, deterministic parallel uploads to distinct cases, attachment-limit races, coordinate validation, and Phase 2 regression coverage.
 
 ## Security defect corrected during acceptance
 
 Direct API testing found that an assigned Officer could previously upload to a Resolved case and delete an attachment uploaded by another user. The controller now enforces the lifecycle boundary and uploader ownership before any Blob or database mutation. Regression tests verify 404 responses and identical attachment, soft-delete, Blob, audit, cleanup, and notification state before and after rejected requests.
+
+## Concurrency defect corrected at the sealing gate
+
+The complete parallel SQL Server suite intermittently returned HTTP 500 while a Manager uploaded an Internal attachment. SQL Server `system_health` identified the inner failure as a deadlock: two attachment uploads opened Serializable transactions, counted active attachments through `IX_CaseAttachments_ServiceRequestId_IsDeleted_UploadedAtUtc`, held adjacent `RangeS-S` locks, and then both attempted the `RangeI-N` conversion required to insert. SQL Server selected one database transaction as the deadlock victim. Because the original flow stored the Blob before opening the database transaction and rethrew the database exception after compensation, the API surfaced a generic 500. Azurite was not involved; the failing real-SQL test host used its isolated in-memory file-storage double, and Azurite logs contained no corresponding failure.
+
+SQL Server uploads now use a ReadCommitted transaction plus a transaction-owned `sp_getapplock` resource scoped to the Case ID. Uploads for the same case are serialized around the authoritative attachment-count check and insert, while uploads for unrelated cases no longer hold conflicting index range locks. The initial and locked attachment-limit checks return stable 409 ProblemDetails. Known storage, SQL, and database-write failures return safe 503 ProblemDetails without exposing inner exceptions or storage metadata.
+
+Blob-first compensation is retained: any rejected database write removes the randomized Blob, and a compensation failure is logged for orphan reconciliation without exposing the key to the client. Regression assertions verify that storage failure, an existing five-attachment limit, and a concurrent limit reached after Blob storage create no attempted attachment row, upload audit, or orphan Blob.
+
+The shared real-SQL test database also exposed multiple `WebApplicationFactory` instances starting their own SLA and attachment-cleanup loops. Those background services could mutate unrelated fixture state and race on notification indexes. Ordinary API fixtures now omit those loops while keeping xUnit parallel execution enabled; worker behavior remains covered by its dedicated tests. Every API test continues to create unique cases, attachment IDs, Blob keys, operation keys, and registration identities, and does not depend on historical database row counts.
+
+New or strengthened regression tests cover deterministic parallel uploads to distinct cases, repeat-safe Internal attachment isolation, storage failure without database/audit/Blob side effects, the five-active-attachment 409 contract, concurrent limit compensation, resident exclusion from Internal projection/download, and cross-resident 404 behavior. The corrected target test passed five consecutive real-SQL runs, and the full real-SQL suite passed three consecutive runs at 36 of 36 with no new deadlock event.
 
 ## Known non-blocking limitations
 
