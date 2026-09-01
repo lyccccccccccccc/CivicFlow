@@ -65,8 +65,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapControllers();
 
-await DatabaseSeeder.InitialiseAsync(app.Services);
-await Phase2Upgrade.ApplyAsync(app.Services);
+await DatabaseStartup.InitialiseAsync(app.Services);
 
 app.Run();
 

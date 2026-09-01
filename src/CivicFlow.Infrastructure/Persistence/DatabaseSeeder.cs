@@ -8,15 +8,11 @@ namespace CivicFlow.Infrastructure.Persistence;
 
 public static class DatabaseSeeder
 {
-    public static async Task InitialiseAsync(IServiceProvider services)
+    public static async Task SeedDevelopmentAsync(IServiceProvider services)
     {
-        await using var scope = services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var created = await db.Database.EnsureCreatedAsync();
-        // Never re-seed an existing database: in particular, do not restore removed roles.
-        if (!created) return;
+        var db = services.GetRequiredService<ApplicationDbContext>();
 
-        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         foreach (var role in CivicFlowRoles.All)
             if (!await roleManager.RoleExistsAsync(role))
                 await roleManager.CreateAsync(new IdentityRole<Guid>(role));
@@ -32,7 +28,7 @@ public static class DatabaseSeeder
             await db.SaveChangesAsync();
         }
 
-        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         await SeedUser(userManager, "admin@civicflow.local", "Alex", "Admin", CivicFlowRoles.SystemAdministrator);
         await SeedUser(userManager, "manager@civicflow.local", "Morgan", "Manager", CivicFlowRoles.TeamManager);
         await SeedUser(userManager, "officer@civicflow.local", "Casey", "Officer", CivicFlowRoles.CaseOfficer);
