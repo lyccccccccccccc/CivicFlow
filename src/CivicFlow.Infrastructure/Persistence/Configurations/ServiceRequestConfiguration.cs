@@ -9,7 +9,9 @@ public sealed class ServiceRequestConfiguration : IEntityTypeConfiguration<Servi
 {
     public void Configure(EntityTypeBuilder<ServiceRequest> builder)
     {
-        builder.ToTable("ServiceRequests");
+        builder.ToTable("ServiceRequests", table => table.HasCheckConstraint(
+            "CK_ServiceRequests_CoordinatePairAndRange",
+            "([Latitude] IS NULL AND [Longitude] IS NULL) OR ([Latitude] BETWEEN -90 AND 90 AND [Longitude] BETWEEN -180 AND 180)"));
         builder.HasKey(request => request.Id);
 
         builder.Property(request => request.ReferenceNumber)
