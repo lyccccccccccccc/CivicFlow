@@ -4,12 +4,19 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using SkiaSharp;
+using CivicFlow.Domain.Entities;
+using CivicFlow.Domain.Enums;
+using CivicFlow.Infrastructure.Identity;
+using CivicFlow.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 
 namespace CivicFlow.IntegrationTests;
 
 public sealed class AttachmentSecurityTests(CivicFlowFactory factory) : IClassFixture<CivicFlowFactory>
 {
     private readonly HttpClient client = factory.CreateClient();
+    private readonly CivicFlowFactory factory = factory;
     private static readonly byte[] Png = CreatePng();
 
     [Fact]
@@ -52,6 +59,34 @@ public sealed class AttachmentSecurityTests(CivicFlowFactory factory) : IClassFi
         var response = await Upload(id, Encoding.UTF8.GetBytes("not a real pdf"), "evidence.pdf", "application/pdf", "Public", Guid.NewGuid().ToString());
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Empty((await client.GetFromJsonAsync<JsonElement>($"/api/cases/{id}/attachments")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task StorageFailure_DoesNotCreateAttachmentRecord()
+    {
+        Authorize(await Login("resident@civicflow.local")); var id = await CreateCase("Storage failure compensation");
+        var storage = factory.Services.GetRequiredService<TestFileStorage>(); var before = storage.Count; storage.FailNextStore = true;
+        var response = await Upload(id, Png, "storage-failure.png", "image/png", "Public", Guid.NewGuid().ToString());
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode); Assert.Equal(before, storage.Count);
+        Assert.Empty((await client.GetFromJsonAsync<JsonElement>($"/api/cases/{id}/attachments")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task DatabaseFailureAfterStore_RemovesNewBlob()
+    {
+        Authorize(await Login("resident@civicflow.local")); var id = await CreateCase("Database failure compensation");
+        var storage = factory.Services.GetRequiredService<TestFileStorage>(); var before = storage.Count;
+        storage.AfterStore = async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var userId = (await db.Users.SingleAsync(x => x.Email == "resident@civicflow.local")).Id;
+            for (var index = 0; index < 5; index++) db.CaseAttachments.Add(CaseAttachment.Create(Guid.NewGuid(), id, userId, $"existing-{index}.pdf", $"test/existing/{Guid.NewGuid():N}", "application/pdf", 10, new string('a', 64), AttachmentVisibility.Public, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync(); storage.AfterStore = null;
+        };
+        var response = await Upload(id, Png, "compensated.png", "image/png", "Public", Guid.NewGuid().ToString());
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode); Assert.Equal(before, storage.Count);
+        var list = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{id}/attachments");
+        Assert.DoesNotContain(list.EnumerateArray(), x => x.GetProperty("originalFileName").GetString() == "compensated.png");
     }
 
     private async Task<HttpResponseMessage> Upload(Guid id, byte[] bytes, string name, string type, string visibility, string key)

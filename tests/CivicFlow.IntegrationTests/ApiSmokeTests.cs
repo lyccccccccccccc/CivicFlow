@@ -65,10 +65,15 @@ public sealed class CivicFlowFactory : WebApplicationFactory<Program>
 public sealed class TestFileStorage : IFileStorage
 {
     private readonly ConcurrentDictionary<string, (byte[] Data, string Type, DateTimeOffset Created, Dictionary<string, string> Metadata)> files = new();
+    public bool FailNextStore { get; set; }
+    public Func<Task>? AfterStore { get; set; }
+    public int Count => files.Count;
     public async Task StoreAsync(string storageKey, Stream content, string contentType, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
     {
+        if (FailNextStore) { FailNextStore = false; throw new InvalidOperationException("Simulated storage failure."); }
         using var buffer = new MemoryStream(); await content.CopyToAsync(buffer, cancellationToken);
         if (!files.TryAdd(storageKey, (buffer.ToArray(), contentType, DateTimeOffset.UtcNow, new(metadata)))) throw new InvalidOperationException("Duplicate test blob.");
+        if (AfterStore is not null) await AfterStore();
     }
     public Task<StoredFile?> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) => Task.FromResult<StoredFile?>(files.TryGetValue(storageKey, out var value) ? new(new MemoryStream(value.Data), value.Type, value.Data.Length, "test-etag") : null);
     public Task<bool> DeleteIfExistsAsync(string storageKey, CancellationToken cancellationToken = default) => Task.FromResult(files.TryRemove(storageKey, out _));
