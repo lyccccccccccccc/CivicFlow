@@ -24,6 +24,8 @@ for attempt in {1..60}; do
   if [[ "$attempt" == 60 ]]; then echo "SQL Server did not become ready"; exit 1; fi
   sleep 2
 done
+docker exec civicflow-ci-sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$sql_password" -C \
+  -Q "IF DB_ID(N'CivicFlowCi') IS NULL CREATE DATABASE [CivicFlowCi]" >/dev/null
 for attempt in {1..30}; do
   if curl --silent --output /dev/null http://127.0.0.1:10000/devstoreaccount1; then break; fi
   if [[ "$attempt" == 30 ]]; then echo "Azurite did not become ready"; exit 1; fi
