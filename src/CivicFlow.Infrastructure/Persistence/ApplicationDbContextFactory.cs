@@ -8,7 +8,8 @@ public sealed class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Ap
     public ApplicationDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__CivicFlowDatabase")
-            ?? "Server=localhost,1433;Database=CivicFlowDesign;User Id=sa;Password=REDACTED_HISTORICAL_DEVELOPMENT_SECRET;TrustServerCertificate=True";
+            ?? throw new InvalidOperationException(
+                "Set ConnectionStrings__CivicFlowDatabase before running EF Core design-time commands.");
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
             .Options;

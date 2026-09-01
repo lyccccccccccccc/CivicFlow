@@ -288,7 +288,7 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
 
     private async Task<(string Token, Guid Id)> Login(string name)
     {
-        var response = await client.PostAsJsonAsync("/api/auth/login", new { email = name + "@civicflow.local", password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET" });
+        var response = await client.PostAsJsonAsync("/api/auth/login", new { email = name + "@civicflow.local", password = TestCredentials.Password });
         response.EnsureSuccessStatusCode(); var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return (json.GetProperty("accessToken").GetString()!, json.GetProperty("user").GetProperty("id").GetGuid());
     }

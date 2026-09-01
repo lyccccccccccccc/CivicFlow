@@ -5,14 +5,14 @@ import { useAuth } from '../auth/AuthContext'
 
 export function LoginPage() {
   const { login } = useAuth(); const navigate = useNavigate()
-  const [email, setEmail] = useState('resident@civicflow.local'); const [password, setPassword] = useState('REDACTED_HISTORICAL_DEVELOPMENT_SECRET')
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(''); try { await login(email, password); navigate('/home') } catch (e) { setError(e instanceof Error ? e.message : 'Sign in failed') } finally { setBusy(false) } }
   return <AuthCard title="Welcome back" subtitle="Sign in to manage or track requests."><Stack component="form" spacing={2} onSubmit={submit}>
     {error && <Alert severity="error">{error}</Alert>}<TextField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus /><TextField label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
     <Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
     <Typography variant="body2" sx={{ textAlign: 'center' }}>New resident? <Link to="/register">Create an account</Link></Typography>
-    <Alert severity="info">Demo accounts use <strong>REDACTED_HISTORICAL_DEVELOPMENT_SECRET</strong>. Try resident@, officer@, manager@ or admin@civicflow.local.</Alert>
+    {import.meta.env.DEV && <Alert severity="info">Local development demo accounts: resident@, officer@, manager@ or admin@civicflow.local. Use the password configured in your local environment.</Alert>}
   </Stack></AuthCard>
 }
 

@@ -3,6 +3,7 @@ using CivicFlow.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace CivicFlow.Infrastructure.Persistence;
 
@@ -11,6 +12,7 @@ public static class DatabaseSeeder
     public static async Task SeedDevelopmentAsync(IServiceProvider services)
     {
         var db = services.GetRequiredService<ApplicationDbContext>();
+        var configuration = services.GetRequiredService<IConfiguration>();
 
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         foreach (var role in CivicFlowRoles.All)
@@ -28,14 +30,18 @@ public static class DatabaseSeeder
             await db.SaveChangesAsync();
         }
 
+        if (!configuration.GetValue<bool>("DemoAccounts:Enabled") || await db.Users.AnyAsync()) return;
+
+        var password = configuration["DemoAccounts:Password"];
+        if (string.IsNullOrWhiteSpace(password))
+            throw new InvalidOperationException("DemoAccounts__Password is required when development demo accounts are enabled.");
+
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-        await SeedUser(userManager, "admin@civicflow.local", "Alex", "Admin", CivicFlowRoles.SystemAdministrator);
-        await SeedUser(userManager, "manager@civicflow.local", "Morgan", "Manager", CivicFlowRoles.TeamManager);
-        await SeedUser(userManager, "officer@civicflow.local", "Casey", "Officer", CivicFlowRoles.CaseOfficer);
-        await SeedUser(userManager, "resident@civicflow.local", "Riley", "Resident", CivicFlowRoles.Resident);
+        foreach (var account in DevelopmentDemoAccounts.All)
+            await SeedUser(userManager, account.Email, account.FirstName, account.LastName, account.Role, password);
     }
 
-    private static async Task SeedUser(UserManager<ApplicationUser> manager, string email, string first, string last, string role)
+    private static async Task SeedUser(UserManager<ApplicationUser> manager, string email, string first, string last, string role, string password)
     {
         var user = await manager.FindByEmailAsync(email);
         if (user is null)
@@ -45,10 +51,23 @@ public static class DatabaseSeeder
                 Id = Guid.NewGuid(), Email = email, UserName = email, EmailConfirmed = true,
                 FirstName = first, LastName = last, CreatedAtUtc = DateTimeOffset.UtcNow
             };
-            var result = await manager.CreateAsync(user, "REDACTED_HISTORICAL_DEVELOPMENT_SECRET");
+            var result = await manager.CreateAsync(user, password);
             if (!result.Succeeded)
                 throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
         }
         if (!await manager.IsInRoleAsync(user, role)) await manager.AddToRoleAsync(user, role);
     }
+}
+
+public sealed record DevelopmentDemoAccount(string Email, string FirstName, string LastName, string Role);
+
+public static class DevelopmentDemoAccounts
+{
+    public static readonly IReadOnlyList<DevelopmentDemoAccount> All =
+    [
+        new("admin@civicflow.local", "Alex", "Admin", CivicFlowRoles.SystemAdministrator),
+        new("manager@civicflow.local", "Morgan", "Manager", CivicFlowRoles.TeamManager),
+        new("officer@civicflow.local", "Casey", "Officer", CivicFlowRoles.CaseOfficer),
+        new("resident@civicflow.local", "Riley", "Resident", CivicFlowRoles.Resident)
+    ];
 }
