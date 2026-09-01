@@ -27,3 +27,15 @@ All server timestamps use UTC. The client is responsible for presenting dates in
 ## 7. Accessibility and privacy
 
 The client targets WCAG 2.2 AA practices. Public comments and internal notes are filtered at the API boundary to reduce accidental disclosure risk.
+
+## 8. Phase 2 additive hardening
+
+CaseActivities remain the append-only source of audit truth. Business pages use an explicit allowlist/projection rather than a public flag alone. No API edits/deletes audit rows; the persistence boundary rejects modified/deleted audit entities. SystemAdministrator and TeamManager have a separate read-only audit route; user/category writes remain administrator-only.
+
+The original database used EnsureCreated rather than an EF migration baseline. `Phase2Upgrade` therefore runs a narrowly scoped, idempotent transactional SQL Server upgrade, protected by an application lock: nullable `CaseActivities.OperationKey` and `UserNotifications.EventKey` columns plus filtered unique indexes. Existing rows are retained. Only cases with both SLA targets missing receive category defaults from their original SubmittedAt, with an appended audit record. Existing due dates, summaries and history are untouched. Startup seeds only a newly created database, never an existing one (so disabled categories and changed user roles are preserved).
+
+Case UpdatedAt is an optimistic concurrency token; state change, activity and notification are saved in one transaction. A concurrent state/unique-key conflict returns 409. SLA monitoring emits one at-risk and one overdue notice per target/recipient, not a repeat every twelve hours.
+
+The SLA upgrade adds nullable `FirstResponseCompletedAtUtc` and `FirstResponseWasBreached` columns. Existing business fields and history are not cleaned, deleted or rewritten; only these new derived columns are backfilled from the earliest stored public staff comment and its stored due date. Future public staff messages set both fields atomically; the breach flag is deliberately not recalculated after manager due-date changes.
+
+Integration tests default to isolated EF InMemory databases. Set `CIVICFLOW_TEST_SQL` to run the same suite against a real SQL Server database; the suite never deletes/recreates the database. It adds uniquely labelled regression cases/categories and retains them for inspection. Supply the connection string via the environment, never a committed file. The SQL-specific duplicate constraint assertion runs only on SQL Server (the default run checks model metadata).

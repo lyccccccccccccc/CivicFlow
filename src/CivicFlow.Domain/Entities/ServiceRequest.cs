@@ -58,6 +58,10 @@ public sealed class ServiceRequest : BaseEntity
 
     public DateTimeOffset? FirstResponseDueAtUtc { get; private set; }
 
+    public DateTimeOffset? FirstResponseCompletedAtUtc { get; private set; }
+
+    public bool? FirstResponseWasBreached { get; private set; }
+
     public DateTimeOffset? ResolutionDueAtUtc { get; private set; }
 
     public DateTimeOffset? ResolvedAtUtc { get; private set; }
@@ -98,6 +102,23 @@ public sealed class ServiceRequest : BaseEntity
             submittedAtUtc);
     }
 
+    public void ApplyInitialSla(int firstResponseHours, int resolutionHours)
+    {
+        if (firstResponseHours <= 0 || resolutionHours <= firstResponseHours)
+            throw new DomainRuleException("Invalid category service targets.");
+        if (FirstResponseDueAtUtc.HasValue || ResolutionDueAtUtc.HasValue) return;
+        FirstResponseDueAtUtc = SubmittedAtUtc.AddHours(firstResponseHours);
+        ResolutionDueAtUtc = SubmittedAtUtc.AddHours(resolutionHours);
+    }
+
+    public void CompleteFirstResponse(DateTimeOffset completedAtUtc)
+    {
+        if (FirstResponseCompletedAtUtc.HasValue) return;
+        FirstResponseCompletedAtUtc = completedAtUtc;
+        FirstResponseWasBreached = FirstResponseDueAtUtc.HasValue && completedAtUtc > FirstResponseDueAtUtc;
+        MarkUpdated(completedAtUtc);
+    }
+
     public void SetLocation(decimal latitude, decimal longitude, DateTimeOffset updatedAtUtc)
     {
         if (latitude is < -90 or > 90 || longitude is < -180 or > 180)
@@ -116,23 +137,31 @@ public sealed class ServiceRequest : BaseEntity
         DateTimeOffset resolutionDueAtUtc,
         DateTimeOffset updatedAtUtc)
     {
-        EnsureStatus(ServiceRequestStatus.Submitted);
+        UpdateTriage(priority, firstResponseDueAtUtc, resolutionDueAtUtc, updatedAtUtc);
+    }
 
+    public void UpdateTriage(
+        CasePriority priority,
+        DateTimeOffset firstResponseDueAtUtc,
+        DateTimeOffset resolutionDueAtUtc,
+        DateTimeOffset updatedAtUtc)
+    {
+        if (Status is ServiceRequestStatus.Resolved or ServiceRequestStatus.Closed or ServiceRequestStatus.Rejected)
+            throw new DomainRuleException($"Triage cannot be changed while the request is {Status}.");
         if (firstResponseDueAtUtc <= SubmittedAtUtc || resolutionDueAtUtc <= firstResponseDueAtUtc)
-        {
             throw new DomainRuleException("SLA due dates must follow the submission time in sequence.");
-        }
 
         Priority = priority;
         FirstResponseDueAtUtc = firstResponseDueAtUtc;
         ResolutionDueAtUtc = resolutionDueAtUtc;
-        Status = ServiceRequestStatus.Triaged;
+        if (Status == ServiceRequestStatus.Submitted) Status = ServiceRequestStatus.Triaged;
         MarkUpdated(updatedAtUtc);
     }
 
     public void Assign(Guid officerId, DateTimeOffset updatedAtUtc)
     {
-        if (Status is not (ServiceRequestStatus.Triaged or ServiceRequestStatus.Assigned))
+        if (Status is ServiceRequestStatus.Submitted or ServiceRequestStatus.Resolved or
+            ServiceRequestStatus.Closed or ServiceRequestStatus.Rejected)
         {
             throw InvalidTransition(ServiceRequestStatus.Assigned);
         }
@@ -143,7 +172,8 @@ public sealed class ServiceRequest : BaseEntity
         }
 
         AssignedOfficerId = officerId;
-        Status = ServiceRequestStatus.Assigned;
+        if (Status is ServiceRequestStatus.Triaged or ServiceRequestStatus.Assigned)
+            Status = ServiceRequestStatus.Assigned;
         MarkUpdated(updatedAtUtc);
     }
 

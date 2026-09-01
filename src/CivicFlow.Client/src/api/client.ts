@@ -2,11 +2,14 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5168/api'
 
 export type User = { id: string; email: string; firstName: string; lastName: string; roles: string[] }
 export type AuthResponse = { accessToken: string; refreshToken: string; expiresAt: string; user: User }
-export type Category = { id: string; name: string; description: string; firstResponseHours: number; resolutionHours: number }
-export type CaseItem = { id: string; referenceNumber: string; title: string; status: string; priority: string; submittedAtUtc: string; resolutionDueAtUtc?: string; assignedOfficerId?: string }
-export type CaseDetail = { case: CaseItem & { description: string; address: string; serviceCategoryId: string; residentId: string }; category: { id: string; name: string }; activities: Activity[] }
-export type Activity = { id: string; type: string; message: string; isPublic: boolean; createdAtUtc: string; actorId: string }
-export type DashboardData = { open: number; overdue: number; resolvedLast30Days: number; unassigned: number; byStatus: { status: string; count: number }[] }
+export type Category = { id: string; name: string; description: string; firstResponseHours: number; resolutionHours: number; isActive: boolean }
+export type Officer = { id: string; firstName: string; lastName: string; email?: string }
+export type CaseItem = { id: string; referenceNumber: string; title: string; description: string; address: string; serviceCategoryId: string; categoryName: string; status: string; priority: string; assignedOfficerId?: string; assignedOfficerName?: string; submittedAtUtc: string; firstResponseDueAtUtc?: string; firstResponseCompletedAtUtc?: string; resolutionDueAtUtc?: string; updatedAtUtc?: string; firstResponseSlaState: string; resolutionSlaState: string; slaState: string; nextSlaDueAtUtc?: string; nextSlaTarget?: string }
+export type CaseDetail = { case: CaseItem; category: { id: string; name: string; firstResponseHours: number; resolutionHours: number }; assignedOfficer?: { id: string; name: string; email: string }; activities: Activity[] }
+export type Activity = { id: string; type: string; label: string; section: 'conversation' | 'internal' | 'progress'; message: string; isPublic: boolean; createdAtUtc: string; actorName?: string }
+export type PagedResponse<T> = { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number }
+export type ChartRow = { label: string; count: number }
+export type DashboardData = { open: number; unassigned: number; atRisk: number; overdue: number; firstResponseBreached: number; waitingForResident: number; resolved: number; byStatus: ChartRow[]; byPriority: ChartRow[]; byCategory: ChartRow[]; officerWorkload: ChartRow[]; slaCases: Pick<CaseItem, 'id' | 'referenceNumber' | 'title' | 'priority' | 'status' | 'firstResponseDueAtUtc' | 'firstResponseCompletedAtUtc' | 'resolutionDueAtUtc' | 'categoryName' | 'firstResponseSlaState' | 'resolutionSlaState' | 'slaState' | 'nextSlaDueAtUtc' | 'nextSlaTarget'>[] }
 
 function savedAuth(): AuthResponse | null {
   try { return JSON.parse(localStorage.getItem('civicflow.auth') ?? 'null') as AuthResponse | null } catch { return null }
@@ -19,11 +22,21 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth.accessToken}` } : {}), ...options.headers },
   })
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { message?: string; title?: string }
-    throw new Error(body.message ?? body.title ?? `Request failed (${response.status})`)
+    const body = await response.json().catch(() => ({})) as { message?: string; detail?: string; title?: string; errors?: Record<string, string[]> }
+    const fieldError = body.errors ? Object.values(body.errors).flat()[0] : undefined
+    throw new Error(fieldError ?? body.message ?? body.detail ?? body.title ?? `Request failed (${response.status})`)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
+}
+
+export async function apiDownload(path: string, fileName: string) {
+  const auth = savedAuth()
+  const response = await fetch(`${API_URL}${path}`, { headers: auth ? { Authorization: `Bearer ${auth.accessToken}` } : {} })
+  if (!response.ok) throw new Error(`Download failed (${response.status})`)
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a'); anchor.href = url; anchor.download = fileName; anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export const authApi = {

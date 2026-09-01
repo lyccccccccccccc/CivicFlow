@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { LandingPage } from './pages/LandingPage'
 import { NewRequestPage } from './pages/NewRequestPage'
 import { AdminPage } from './pages/AdminPage'
+import { AuditLogPage } from './pages/AuditLogPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 
 const theme = createTheme({
@@ -31,6 +32,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}><Route path="home" element={<HomeRedirect />} /><Route path="requests" element={<CasesPage />} /><Route path="cases/:id" element={<CaseDetailPage />} /><Route path="requests/new" element={<NewRequestPage />} /><Route path="notifications" element={<NotificationsPage />} /></Route>
       <Route element={<ProtectedRoute staff />}><Route path="cases" element={<CasesPage />} /><Route path="dashboard" element={<DashboardPage />} /></Route>
       <Route element={<ProtectedRoute role="SystemAdministrator" />}><Route path="admin" element={<AdminPage />} /></Route>
+      <Route element={<ProtectedRoute managers />}><Route path="admin/audit-log" element={<AuditLogPage />} /></Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   </Routes></AuthProvider></BrowserRouter></ThemeProvider>
