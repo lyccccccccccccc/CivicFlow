@@ -12,6 +12,7 @@ public class CaseFilterParameters
     public Guid? OfficerId { get; init; }
     public bool Unassigned { get; init; }
     public string? SlaState { get; init; }
+    public string? FirstResponseSlaState { get; init; }
     public DateTimeOffset? SubmittedFrom { get; init; }
     public DateTimeOffset? SubmittedTo { get; init; }
     public DateTimeOffset? DueFrom { get; init; }
@@ -51,18 +52,29 @@ public static class CaseQuery
             x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected);
         query = filters.SlaState?.Trim().ToLowerInvariant() switch
         {
-            "overdue" => active.Where(x => x.ResolutionDueAtUtc != null && x.ResolutionDueAtUtc < now),
-            "atrisk" or "at-risk" => active.Where(x => x.ResolutionDueAtUtc >= now && x.ResolutionDueAtUtc <= now.AddHours(24)),
-            "ontrack" or "on-track" => active.Where(x => x.ResolutionDueAtUtc > now.AddHours(24)),
+            "overdue" => OverallOverdue(active, now),
+            "atrisk" or "at-risk" => OverallAtRisk(active, now),
+            "ontrack" or "on-track" => OverallOnTrack(active, now),
             "nosla" or "no-sla" => query.Where(x => x.ResolutionDueAtUtc == null),
             "complete" => query.Where(x => x.Status == ServiceRequestStatus.Resolved || x.Status == ServiceRequestStatus.Closed),
+            _ => query
+        };
+
+        query = filters.FirstResponseSlaState?.Trim().ToLowerInvariant() switch
+        {
+            "breached" => query.Where(x => x.FirstResponseWasBreached == true),
+            "overdue" => query.Where(x => x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc < now),
+            "atrisk" or "at-risk" => query.Where(x => x.FirstResponseCompletedAtUtc == null &&
+                x.FirstResponseDueAtUtc >= now && x.FirstResponseDueAtUtc <= now.AddHours(24)),
+            "ontrack" or "on-track" => query.Where(x => x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc > now.AddHours(24)),
+            "complete" => query.Where(x => x.FirstResponseCompletedAtUtc != null && x.FirstResponseWasBreached != true),
             _ => query
         };
 
         query = filters.QuickView?.Trim().ToLowerInvariant() switch
         {
             "today" => query.Where(x => x.ResolutionDueAtUtc >= now.Date && x.ResolutionDueAtUtc < now.Date.AddDays(1)),
-            "overdue" => query.Where(x => x.ResolutionDueAtUtc < now && x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected),
+            "overdue" => OverallOverdue(query.Where(x => x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected), now),
             "waiting" => query.Where(x => x.Status == ServiceRequestStatus.WaitingForResident),
             "recent" => query.Where(x => (x.UpdatedAtUtc ?? x.CreatedAtUtc) >= now.AddDays(-7)),
             "open" => query.Where(x => x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected),
@@ -73,9 +85,17 @@ public static class CaseQuery
 
     public static string SlaState(ServiceRequest item, DateTimeOffset now)
     {
-        if (item.Status is ServiceRequestStatus.Resolved or ServiceRequestStatus.Closed) return "Complete";
-        if (item.ResolutionDueAtUtc is null) return "NoSla";
-        if (item.ResolutionDueAtUtc < now) return "Overdue";
-        return item.ResolutionDueAtUtc <= now.AddHours(24) ? "AtRisk" : "OnTrack";
+        return SlaCalculator.OverallState(item, now);
     }
+
+    public static IQueryable<ServiceRequest> OverallOverdue(IQueryable<ServiceRequest> query, DateTimeOffset now) =>
+        query.Where(x => (x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc < now) || x.ResolutionDueAtUtc < now);
+
+    public static IQueryable<ServiceRequest> OverallAtRisk(IQueryable<ServiceRequest> query, DateTimeOffset now) =>
+        query.Where(x => !((x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc < now) || x.ResolutionDueAtUtc < now) &&
+            ((x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc >= now && x.FirstResponseDueAtUtc <= now.AddHours(24)) ||
+             (x.ResolutionDueAtUtc >= now && x.ResolutionDueAtUtc <= now.AddHours(24))));
+
+    public static IQueryable<ServiceRequest> OverallOnTrack(IQueryable<ServiceRequest> query, DateTimeOffset now) =>
+        query.Where(x => !((x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc <= now.AddHours(24)) || x.ResolutionDueAtUtc <= now.AddHours(24)));
 }

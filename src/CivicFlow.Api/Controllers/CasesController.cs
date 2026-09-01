@@ -30,8 +30,14 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
     [Authorize(Roles = CivicFlowRoles.Resident)]
     public async Task<IActionResult> Create(CreateCaseRequest request)
     {
+        ValidateCreate(request);
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
         var category = await db.ServiceCategories.FindAsync(request.CategoryId);
-        if (category is null || !category.IsActive) return BadRequest(new { message = "Select an active service category." });
+        if (category is null || !category.IsActive)
+        {
+            ModelState.AddModelError(nameof(request.CategoryId), "Select an existing active service category.");
+            return ValidationProblem(ModelState);
+        }
         var now = DateTimeOffset.UtcNow;
         var reference = $"CF-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
         var item = ServiceRequest.Create(reference, User.UserId(), request.CategoryId,
@@ -201,6 +207,12 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         if (operationKey != null && await db.CaseActivities.AnyAsync(x => x.ActorId == User.UserId() && x.OperationKey == operationKey)) return NoContent();
         var isPublic = User.IsInRole(CivicFlowRoles.Resident) || !request.Internal;
         var activity = AddActivity(item.Id, isPublic ? "Comment" : "InternalNote", request.Message, isPublic, operationKey);
+        if (isPublic && !User.IsInRole(CivicFlowRoles.Resident) && item.FirstResponseCompletedAtUtc is null)
+        {
+            item.CompleteFirstResponse(activity.CreatedAtUtc);
+            var result = activity.CreatedAtUtc <= item.FirstResponseDueAtUtc ? "within target" : "after target (breached)";
+            AddActivity(item.Id, "FirstResponseCompleted", $"First resident-visible staff response completed {activity.CreatedAtUtc:u}, {result}; due {item.FirstResponseDueAtUtc:u}.", false);
+        }
         if (User.IsInRole(CivicFlowRoles.Resident) && item.Status == ServiceRequestStatus.WaitingForResident)
         {
             item.ResumeAfterResidentReply(DateTimeOffset.UtcNow);
@@ -258,6 +270,20 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         return activity;
     }
 
+    private void ValidateCreate(CreateCaseRequest request)
+    {
+        ValidateText(nameof(request.Title), request.Title, 5, 150);
+        ValidateText(nameof(request.Description), request.Description, 20, 2000);
+        ValidateText(nameof(request.Address), request.Address, 5, 300, "Location");
+    }
+
+    private void ValidateText(string field, string? value, int min, int max, string? label = null)
+    {
+        var length = value?.Trim().Length ?? 0;
+        if (length < min || length > max)
+            ModelState.AddModelError(field, $"{label ?? field} must be {min}–{max} characters after trimming.");
+    }
+
     private void Notify(Guid recipient, ServiceRequest item, CaseActivity activity, string title, string message)
     {
         if (recipient == User.UserId()) return;
@@ -275,8 +301,8 @@ public sealed class CaseListQuery : CaseFilterParameters
 }
 
 public sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);
-public sealed record CreateCaseRequest([Required] Guid CategoryId, [Required, MaxLength(160)] string Title,
-    [Required, MaxLength(4000)] string Description, [Required, MaxLength(300)] string Address,
+public sealed record CreateCaseRequest([Required] Guid CategoryId, string Title,
+    string Description, string Address,
     decimal? Latitude, decimal? Longitude);
 public sealed record TriageRequest(CasePriority Priority, DateTimeOffset? FirstResponseDueAtUtc, DateTimeOffset? ResolutionDueAtUtc);
 public sealed record AssignRequest(Guid OfficerId);
@@ -286,13 +312,16 @@ public sealed record CaseListItem(
     Guid Id, string ReferenceNumber, string Title, string Description, string Address,
     Guid ServiceCategoryId, string CategoryName, string Status, string Priority,
     Guid? AssignedOfficerId, string? AssignedOfficerName, DateTimeOffset SubmittedAtUtc,
-    DateTimeOffset? FirstResponseDueAtUtc, DateTimeOffset? ResolutionDueAtUtc,
-    DateTimeOffset? UpdatedAtUtc, string SlaState)
+    DateTimeOffset? FirstResponseDueAtUtc, DateTimeOffset? FirstResponseCompletedAtUtc,
+    DateTimeOffset? ResolutionDueAtUtc, DateTimeOffset? UpdatedAtUtc, string FirstResponseSlaState,
+    string ResolutionSlaState, string SlaState, DateTimeOffset? NextSlaDueAtUtc, string? NextSlaTarget)
 {
     public static CaseListItem From(ServiceRequest item, string categoryName, string? officerName,
         DateTimeOffset now, bool includeDetails = false) => new(item.Id, item.ReferenceNumber, item.Title,
         includeDetails ? item.Description : string.Empty, includeDetails ? item.Address : string.Empty,
         item.ServiceCategoryId, categoryName, item.Status.ToString(), item.Priority.ToString(),
         item.AssignedOfficerId, officerName, item.SubmittedAtUtc, item.FirstResponseDueAtUtc,
-        item.ResolutionDueAtUtc, item.UpdatedAtUtc, CaseQuery.SlaState(item, now));
+        item.FirstResponseCompletedAtUtc, item.ResolutionDueAtUtc, item.UpdatedAtUtc,
+        SlaCalculator.FirstResponseState(item, now), SlaCalculator.ResolutionState(item, now),
+        CaseQuery.SlaState(item, now), SlaCalculator.NextDue(item), SlaCalculator.NextTarget(item));
 }

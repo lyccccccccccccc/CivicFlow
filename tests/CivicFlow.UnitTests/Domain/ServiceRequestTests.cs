@@ -118,6 +118,18 @@ public sealed class ServiceRequestTests
         Assert.Equal(replacement, request.AssignedOfficerId);
     }
 
+    [Fact]
+    public void CompleteFirstResponse_RecordsOnlyTheFirstPublicResponseTime()
+    {
+        var request = CreateRequest();
+        request.ApplyInitialSla(4, 24);
+
+        request.CompleteFirstResponse(SubmittedAt.AddHours(3));
+        request.CompleteFirstResponse(SubmittedAt.AddHours(5));
+
+        Assert.Equal(SubmittedAt.AddHours(3), request.FirstResponseCompletedAtUtc);
+    }
+
     private static ServiceRequest CreateRequest()
     {
         return ServiceRequest.Create(

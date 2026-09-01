@@ -14,6 +14,95 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
 {
     private readonly HttpClient client = factory.CreateClient();
 
+    [Fact]
+    public void SlaStates_TrackFirstResponseAndUseTheMostSevereIncompleteTarget()
+    {
+        var submitted = DateTimeOffset.UtcNow.AddHours(-10);
+        var item = ServiceRequest.Create("TEST-SLA-STATE", Guid.NewGuid(), Guid.NewGuid(), "Valid SLA title", "A sufficiently detailed service request.", "Test location", submitted);
+        item.ApplyInitialSla(4, 48);
+        Assert.Equal("Overdue", SlaCalculator.FirstResponseState(item, DateTimeOffset.UtcNow));
+        Assert.Equal("OnTrack", SlaCalculator.ResolutionState(item, DateTimeOffset.UtcNow));
+        Assert.Equal("Overdue", SlaCalculator.OverallState(item, DateTimeOffset.UtcNow));
+
+        item.CompleteFirstResponse(submitted.AddHours(3));
+        Assert.Equal("Complete", SlaCalculator.FirstResponseState(item, DateTimeOffset.UtcNow));
+        Assert.Equal("OnTrack", SlaCalculator.OverallState(item, DateTimeOffset.UtcNow));
+
+        var late = ServiceRequest.Create("TEST-SLA-LATE", Guid.NewGuid(), Guid.NewGuid(), "Valid SLA title", "A sufficiently detailed service request.", "Test location", submitted);
+        late.ApplyInitialSla(4, 48); late.CompleteFirstResponse(submitted.AddHours(5));
+        Assert.Equal("Breached", SlaCalculator.FirstResponseState(late, DateTimeOffset.UtcNow));
+        Assert.Equal("OnTrack", SlaCalculator.OverallState(late, DateTimeOffset.UtcNow));
+        late.UpdateTriage(CivicFlow.Domain.Enums.CasePriority.Medium, submitted.AddHours(6), submitted.AddHours(48), submitted.AddHours(6));
+        Assert.Equal("Breached", SlaCalculator.FirstResponseState(late, DateTimeOffset.UtcNow));
+        Assert.Equal(late.ResolutionDueAtUtc, SlaCalculator.NextDue(late));
+    }
+
+    [Fact]
+    public async Task CreateCase_RejectsTrimmedLengthAndInactiveCategory_WithFieldErrors()
+    {
+        var resident = await Login("resident"); Auth(resident.Token);
+        var active = (await Json("/api/categories")).EnumerateArray().First().GetProperty("id").GetGuid();
+        var invalidText = new[] {
+            new { categoryId = active, title = "123", description = "A sufficiently detailed description.", address = "Valid location" },
+            new { categoryId = active, title = "     ", description = "A sufficiently detailed description.", address = "Valid location" },
+            new { categoryId = active, title = "Valid title", description = "123", address = "Valid location" },
+            new { categoryId = active, title = "Valid title", description = new string('x', 2001), address = "Valid location" },
+            new { categoryId = active, title = new string('x', 151), description = "A sufficiently detailed description.", address = "Valid location" },
+            new { categoryId = active, title = "Valid title", description = "A sufficiently detailed description.", address = "123" },
+            new { categoryId = active, title = "Valid title", description = "A sufficiently detailed description.", address = new string('x', 301) }
+        };
+        foreach (var payload in invalidText)
+        {
+            var response = await client.PostAsJsonAsync("/api/cases", payload);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("errors", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        }
+        foreach (var categoryId in new[] { Guid.NewGuid(), await AddDisabledCategory() })
+        {
+            var response = await client.PostAsJsonAsync("/api/cases", new { categoryId, title = "Valid title", description = "A sufficiently detailed description.", address = "Valid location" });
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("CategoryId", await response.Content.ReadAsStringAsync());
+        }
+        var valid = await client.PostAsJsonAsync("/api/cases", new { categoryId = active, title = "  Valid new request  ", description = "  A sufficiently detailed service request description.  ", address = "  10 Valid Street  " });
+        valid.EnsureSuccessStatusCode(); var id = (await valid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var detail = (await Json($"/api/cases/{id}")).GetProperty("case");
+        Assert.Equal("Valid new request", detail.GetProperty("title").GetString());
+        Assert.NotEqual(JsonValueKind.Null, detail.GetProperty("firstResponseDueAtUtc").ValueKind);
+        Assert.NotEqual(JsonValueKind.Null, detail.GetProperty("resolutionDueAtUtc").ValueKind);
+    }
+
+    [Fact]
+    public async Task OnlyPublicStaffMessage_CompletesFirstResponse()
+    {
+        var resident = await Login("resident"); var officer = await Login("officer"); var manager = await Login("manager");
+        Auth(resident.Token); var category = (await Json("/api/categories")).EnumerateArray().First().GetProperty("id").GetGuid();
+        var created = await client.PostAsJsonAsync("/api/cases", new { categoryId = category, title = "First response contract", description = "Testing which activity completes first response.", address = "10 Test Street" });
+        created.EnsureSuccessStatusCode(); var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        Auth(manager.Token); await Post($"/api/cases/{id}/triage", new { priority = "Medium" }); await Post($"/api/cases/{id}/assign", new { officerId = officer.Id });
+        Auth(officer.Token); await Post($"/api/cases/{id}/status", new { status = "InProgress" }); await Post($"/api/cases/{id}/comments", new { message = "Private investigation note", @internal = true });
+        Assert.Equal(JsonValueKind.Null, (await Json($"/api/cases/{id}")).GetProperty("case").GetProperty("firstResponseCompletedAtUtc").ValueKind);
+        await Post($"/api/cases/{id}/comments", new { message = "Public service team response", @internal = false });
+        var detail = (await Json($"/api/cases/{id}")).GetProperty("case");
+        Assert.NotEqual(JsonValueKind.Null, detail.GetProperty("firstResponseCompletedAtUtc").ValueKind);
+        Assert.Equal("Complete", detail.GetProperty("firstResponseSlaState").GetString());
+    }
+
+    [Fact]
+    public async Task DashboardAndCsv_UseOverallSlaIncludingOverdueFirstResponse()
+    {
+        var resident = await Login("resident"); var manager = await Login("manager"); var label = $"SLA-consistency-{Guid.NewGuid():N}";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var category = await db.ServiceCategories.FirstAsync(); var submitted = DateTimeOffset.UtcNow.AddHours(-10);
+            var item = ServiceRequest.Create($"TEST-{Guid.NewGuid():N}"[..22], resident.Id, category.Id, label, "First response is overdue while resolution remains on track.", "Test location", submitted);
+            item.ApplyInitialSla(4, 48); db.ServiceRequests.Add(item); await db.SaveChangesAsync();
+        }
+        Auth(manager.Token); var dashboard = await Json($"/api/dashboard?search={label}");
+        Assert.Equal(1, dashboard.GetProperty("overdue").GetInt32()); Assert.Equal(0, dashboard.GetProperty("atRisk").GetInt32());
+        var csv = await client.GetStringAsync($"/api/reports/cases.csv?search={label}");
+        Assert.Contains(",OnTrack,Overdue,0", csv);
+    }
+
     [Theory]
     [InlineData("InternalNote", true)]
     [InlineData("PriorityChanged", true)]
@@ -202,6 +291,12 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
         var response = await client.PostAsJsonAsync("/api/auth/login", new { email = name + "@civicflow.local", password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET" });
         response.EnsureSuccessStatusCode(); var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return (json.GetProperty("accessToken").GetString()!, json.GetProperty("user").GetProperty("id").GetGuid());
+    }
+    private async Task<Guid> AddDisabledCategory()
+    {
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var category = new ServiceCategory($"Disabled test {Guid.NewGuid():N}", "Validation regression", 4, 24, DateTimeOffset.UtcNow);
+        category.SetActive(false, DateTimeOffset.UtcNow); db.ServiceCategories.Add(category); await db.SaveChangesAsync(); return category.Id;
     }
     private void Auth(string token) => client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     private async Task<JsonElement> Json(string path) => await client.GetFromJsonAsync<JsonElement>(path);

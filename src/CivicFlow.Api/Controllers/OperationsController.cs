@@ -49,8 +49,10 @@ public sealed class OperationsController(ApplicationDbContext db) : ControllerBa
 
         var open = await query.CountAsync(x => x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected && x.Status != ServiceRequestStatus.Resolved);
         var unassigned = await query.CountAsync(x => x.AssignedOfficerId == null && x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected);
-        var atRisk = await query.CountAsync(x => x.ResolutionDueAtUtc >= now && x.ResolutionDueAtUtc <= now.AddHours(24) && x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected);
-        var overdue = await query.CountAsync(x => x.ResolutionDueAtUtc < now && x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected);
+        var activeSla = query.Where(x => x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected);
+        var atRisk = await CaseQuery.OverallAtRisk(activeSla, now).CountAsync();
+        var overdue = await CaseQuery.OverallOverdue(activeSla, now).CountAsync();
+        var firstResponseBreached = await query.CountAsync(x => x.FirstResponseWasBreached == true);
         var waiting = await query.CountAsync(x => x.Status == ServiceRequestStatus.WaitingForResident);
         var resolved = await query.CountAsync(x => x.Status == ServiceRequestStatus.Resolved);
         var byStatus = await query.GroupBy(x => x.Status).Select(x => new ChartRow(x.Key.ToString(), x.Count())).ToListAsync();
@@ -64,23 +66,29 @@ public sealed class OperationsController(ApplicationDbContext db) : ControllerBa
         var officerNames = await db.Users.AsNoTracking().Where(x => officerIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.FirstName + " " + x.LastName);
         var workload = workloadRows.Select(x => new ChartRow(officerNames.GetValueOrDefault(x.Id, "Unknown"), x.Count)).ToList();
-        var riskRows = await query.Where(x => x.ResolutionDueAtUtc != null && x.ResolutionDueAtUtc <= now.AddHours(24) &&
-                x.Status != ServiceRequestStatus.Resolved && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Rejected)
-            .OrderBy(x => x.ResolutionDueAtUtc).Take(10)
+        var riskRows = await CaseQuery.OverallOverdue(activeSla, now).Concat(CaseQuery.OverallAtRisk(activeSla, now))
+            .Distinct()
+            .OrderBy(x => x.FirstResponseCompletedAtUtc == null && x.FirstResponseDueAtUtc < x.ResolutionDueAtUtc
+                ? x.FirstResponseDueAtUtc : x.ResolutionDueAtUtc)
+            .Take(10)
             .Select(x => new
             {
-                x.Id, x.ReferenceNumber, x.Title, x.Priority, x.Status, x.ResolutionDueAtUtc,
+                Item = x,
                 CategoryName = db.ServiceCategories.Where(c => c.Id == x.ServiceCategoryId).Select(c => c.Name).First()
             }).ToListAsync();
         return Ok(new
         {
             Open = open, Unassigned = unassigned, AtRisk = atRisk, Overdue = overdue,
+            FirstResponseBreached = firstResponseBreached,
             WaitingForResident = waiting, Resolved = resolved,
             ByStatus = byStatus, ByPriority = byPriority, ByCategory = categoryChart,
             OfficerWorkload = workload,
             ActiveWorkload = workload.Sum(x => x.Count),
             ActiveWorkloadDefinition = "Assigned cases excluding Resolved, Closed and Rejected",
-            SlaCases = riskRows.Select(x => new { x.Id, x.ReferenceNumber, x.Title, Priority = x.Priority.ToString(), Status = x.Status.ToString(), x.ResolutionDueAtUtc, x.CategoryName, SlaState = x.ResolutionDueAtUtc < now ? "Overdue" : "AtRisk" })
+            SlaCases = riskRows.Select(x => new { x.Item.Id, x.Item.ReferenceNumber, x.Item.Title, Priority = x.Item.Priority.ToString(), Status = x.Item.Status.ToString(),
+                x.Item.FirstResponseDueAtUtc, x.Item.FirstResponseCompletedAtUtc, x.Item.ResolutionDueAtUtc, x.CategoryName,
+                FirstResponseSlaState = SlaCalculator.FirstResponseState(x.Item, now), ResolutionSlaState = SlaCalculator.ResolutionState(x.Item, now),
+                SlaState = SlaCalculator.OverallState(x.Item, now), NextSlaDueAtUtc = SlaCalculator.NextDue(x.Item), NextSlaTarget = SlaCalculator.NextTarget(x.Item) })
         });
     }
 
@@ -96,15 +104,18 @@ public sealed class OperationsController(ApplicationDbContext db) : ControllerBa
             .OrderByDescending(x => x.SubmittedAtUtc).Take(5000)
             .Select(x => new
             {
-                x.Id, x.ReferenceNumber, x.Title, x.Status, x.Priority, x.SubmittedAtUtc, x.ResolutionDueAtUtc,
+                Item = x,
                 IsActiveWorkload = activeIds.Contains(x.Id),
                 Category = db.ServiceCategories.Where(c => c.Id == x.ServiceCategoryId).Select(c => c.Name).First(),
                 Officer = db.Users.Where(u => u.Id == x.AssignedOfficerId).Select(u => u.FirstName + " " + u.LastName).FirstOrDefault()
             }).ToListAsync();
-        var csv = new StringBuilder("Reference,Title,Category,Status,Priority,Officer,Submitted UTC,Resolution Due UTC,Active workload\r\n");
+        var csv = new StringBuilder("Reference,Title,Category,Status,Priority,Officer,Submitted UTC,First Response Due UTC,First Response Completed UTC,First Response SLA,Resolution Due UTC,Resolution SLA,Overall SLA,Active workload\r\n");
         foreach (var item in rows)
-            csv.AppendLine(string.Join(',', Escape(item.ReferenceNumber), Escape(item.Title), Escape(item.Category), item.Status, item.Priority,
-                Escape(item.Officer ?? string.Empty), item.SubmittedAtUtc.ToString("O"), item.ResolutionDueAtUtc?.ToString("O") ?? string.Empty, item.IsActiveWorkload ? "1" : "0"));
+            csv.AppendLine(string.Join(',', Escape(item.Item.ReferenceNumber), Escape(item.Item.Title), Escape(item.Category), item.Item.Status, item.Item.Priority,
+                Escape(item.Officer ?? string.Empty), item.Item.SubmittedAtUtc.ToString("O"), item.Item.FirstResponseDueAtUtc?.ToString("O") ?? string.Empty,
+                item.Item.FirstResponseCompletedAtUtc?.ToString("O") ?? string.Empty, SlaCalculator.FirstResponseState(item.Item, DateTimeOffset.UtcNow),
+                item.Item.ResolutionDueAtUtc?.ToString("O") ?? string.Empty, SlaCalculator.ResolutionState(item.Item, DateTimeOffset.UtcNow),
+                SlaCalculator.OverallState(item.Item, DateTimeOffset.UtcNow), item.IsActiveWorkload ? "1" : "0"));
         return File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"civicflow-cases-{DateTime.UtcNow:yyyyMMdd}.csv");
     }
 

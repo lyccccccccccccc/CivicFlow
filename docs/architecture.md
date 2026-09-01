@@ -36,4 +36,6 @@ The original database used EnsureCreated rather than an EF migration baseline. `
 
 Case UpdatedAt is an optimistic concurrency token; state change, activity and notification are saved in one transaction. A concurrent state/unique-key conflict returns 409. SLA monitoring emits one at-risk and one overdue notice per target/recipient, not a repeat every twelve hours.
 
+The SLA upgrade adds nullable `FirstResponseCompletedAtUtc` and `FirstResponseWasBreached` columns. Existing business fields and history are not cleaned, deleted or rewritten; only these new derived columns are backfilled from the earliest stored public staff comment and its stored due date. Future public staff messages set both fields atomically; the breach flag is deliberately not recalculated after manager due-date changes.
+
 Integration tests default to isolated EF InMemory databases. Set `CIVICFLOW_TEST_SQL` to run the same suite against a real SQL Server database; the suite never deletes/recreates the database. It adds uniquely labelled regression cases/categories and retains them for inspection. Supply the connection string via the environment, never a committed file. The SQL-specific duplicate constraint assertion runs only on SQL Server (the default run checks model metadata).

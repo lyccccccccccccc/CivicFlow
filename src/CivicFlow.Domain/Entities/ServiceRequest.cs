@@ -58,6 +58,10 @@ public sealed class ServiceRequest : BaseEntity
 
     public DateTimeOffset? FirstResponseDueAtUtc { get; private set; }
 
+    public DateTimeOffset? FirstResponseCompletedAtUtc { get; private set; }
+
+    public bool? FirstResponseWasBreached { get; private set; }
+
     public DateTimeOffset? ResolutionDueAtUtc { get; private set; }
 
     public DateTimeOffset? ResolvedAtUtc { get; private set; }
@@ -105,6 +109,14 @@ public sealed class ServiceRequest : BaseEntity
         if (FirstResponseDueAtUtc.HasValue || ResolutionDueAtUtc.HasValue) return;
         FirstResponseDueAtUtc = SubmittedAtUtc.AddHours(firstResponseHours);
         ResolutionDueAtUtc = SubmittedAtUtc.AddHours(resolutionHours);
+    }
+
+    public void CompleteFirstResponse(DateTimeOffset completedAtUtc)
+    {
+        if (FirstResponseCompletedAtUtc.HasValue) return;
+        FirstResponseCompletedAtUtc = completedAtUtc;
+        FirstResponseWasBreached = FirstResponseDueAtUtc.HasValue && completedAtUtc > FirstResponseDueAtUtc;
+        MarkUpdated(completedAtUtc);
     }
 
     public void SetLocation(decimal latitude, decimal longitude, DateTimeOffset updatedAtUtc)

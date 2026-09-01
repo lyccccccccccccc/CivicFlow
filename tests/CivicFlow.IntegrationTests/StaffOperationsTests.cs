@@ -17,7 +17,8 @@ public sealed class StaffOperationsTests : IClassFixture<CivicFlowFactory>
         var resident = await Login("resident@civicflow.local");
         var manager = await Login("manager@civicflow.local");
         var officer = await Login("officer@civicflow.local");
-        var caseId = await CreateCase(resident.Token, "Staff workflow integration test");
+        var uniqueTitle = $"Staff workflow {Guid.NewGuid():N}";
+        var caseId = await CreateCase(resident.Token, uniqueTitle);
 
         Authorize(manager.Token);
         var firstDue = DateTimeOffset.UtcNow.AddHours(2);
@@ -38,7 +39,7 @@ public sealed class StaffOperationsTests : IClassFixture<CivicFlowFactory>
         Assert.Equal(HttpStatusCode.NoContent, (await _client.PostAsJsonAsync($"/api/cases/{caseId}/status", new { status = "Resolved", note = "Verified resolution summary." })).StatusCode);
 
         Authorize(manager.Token);
-        var page = await _client.GetFromJsonAsync<JsonElement>("/api/cases?priority=Critical&page=1&pageSize=10&sortBy=priority&sortDirection=desc");
+        var page = await _client.GetFromJsonAsync<JsonElement>($"/api/cases?priority=Critical&search={uniqueTitle}&page=1&pageSize=10&sortBy=priority&sortDirection=desc");
         Assert.True(page.GetProperty("totalCount").GetInt32() >= 1);
         Assert.Contains(page.GetProperty("items").EnumerateArray(), x => x.GetProperty("id").GetGuid() == caseId);
         var detail = await _client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}");
