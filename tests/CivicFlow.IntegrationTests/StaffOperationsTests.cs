@@ -88,7 +88,7 @@ public sealed class StaffOperationsTests : IClassFixture<CivicFlowFactory>
     private async Task<(string Token, Guid UserId)> Login(string email)
     {
         _client.DefaultRequestHeaders.Authorization = null;
-        var response = await _client.PostAsJsonAsync("/api/auth/login", new { email, password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET" });
+        var response = await _client.PostAsJsonAsync("/api/auth/login", new { email, password = TestCredentials.Password });
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return (json.GetProperty("accessToken").GetString()!, json.GetProperty("user").GetProperty("id").GetGuid());

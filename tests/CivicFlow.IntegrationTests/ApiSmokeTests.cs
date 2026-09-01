@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using CivicFlow.Api.Background;
+using Microsoft.Extensions.Configuration;
 
 namespace CivicFlow.IntegrationTests;
 
@@ -45,6 +46,12 @@ public sealed class CivicFlowFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["DemoAccounts:Enabled"] = "true",
+                ["DemoAccounts:Password"] = TestCredentials.Password
+            }));
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {

@@ -47,7 +47,7 @@ public sealed class AttachmentSecurityTests(CivicFlowFactory factory) : IClassFi
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/cases/{id}/attachments/{internalId}/content")).StatusCode);
 
         var email = $"other-{Guid.NewGuid():N}@example.local";
-        var registration = await client.PostAsJsonAsync("/api/auth/register", new { email, password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET", firstName = "Other", lastName = "Resident" }); registration.EnsureSuccessStatusCode();
+        var registration = await client.PostAsJsonAsync("/api/auth/register", new { email, password = TestCredentials.Password, firstName = "Other", lastName = "Resident" }); registration.EnsureSuccessStatusCode();
         var other = (await registration.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!; Authorize(other);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/cases/{id}/attachments")).StatusCode);
     }
@@ -153,7 +153,7 @@ public sealed class AttachmentSecurityTests(CivicFlowFactory factory) : IClassFi
         await using var scope = factory.Services.CreateAsyncScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         return await db.CaseActivities.CountAsync(x => x.ServiceRequestId == id);
     }
-    private async Task<string> Login(string email) { var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET" }); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!; }
+    private async Task<string> Login(string email) { var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = TestCredentials.Password }); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!; }
     private void Authorize(string token) => client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     private static byte[] CreatePng() { using var bitmap = new SKBitmap(1, 1); bitmap.SetPixel(0, 0, SKColors.Blue); using var image = SKImage.FromBitmap(bitmap); using var data = image.Encode(SKEncodedImageFormat.Png, 100); return data.ToArray(); }
 }

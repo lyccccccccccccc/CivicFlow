@@ -127,7 +127,7 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
     }
     private Task<HttpResponseMessage> Delete(Guid caseId, Guid attachmentId) => client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/api/cases/{caseId}/attachments/{attachmentId}") { Content = JsonContent.Create(new { reason = "Lifecycle security verification deletion." }) });
     private Task<HttpResponseMessage> ChangeStatus(Guid caseId, string status, string? note = null) => client.PostAsJsonAsync($"/api/cases/{caseId}/status", new { status, note });
-    private async Task<string> Login(string email) { var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET" }); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!; }
+    private async Task<string> Login(string email) { var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = TestCredentials.Password }); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!; }
     private void Authorize(string token) => client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     private static byte[] CreatePng() { using var bitmap = new SKBitmap(1, 1); bitmap.SetPixel(0, 0, SKColors.Green); using var image = SKImage.FromBitmap(bitmap); using var data = image.Encode(SKEncodedImageFormat.Png, 100); return data.ToArray(); }
 

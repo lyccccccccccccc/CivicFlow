@@ -23,7 +23,12 @@ public static class DependencyInjection
             options.UseSqlServer(connectionString));
         services.Configure<DatabaseMigrationOptions>(configuration.GetSection(DatabaseMigrationOptions.SectionName));
         services.AddScoped<SchemaBaselineValidator>();
-        services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+        services.AddOptions<FileStorageOptions>()
+            .Bind(configuration.GetSection(FileStorageOptions.SectionName))
+            .Validate(value => !string.IsNullOrWhiteSpace(value.ConnectionString) ||
+                               (value.UseManagedIdentity && value.ServiceUri is not null),
+                "File storage requires a connection string or a service URI with managed identity.")
+            .ValidateOnStart();
         services.AddSingleton<IFileStorage, AzureBlobFileStorage>();
 
         services

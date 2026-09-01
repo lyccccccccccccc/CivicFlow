@@ -8,15 +8,29 @@ foreach ($command in @("dotnet", "node", "npm", "docker")) {
     }
 }
 
-$databasePassword = "REDACTED_HISTORICAL_DEVELOPMENT_SECRET"
 if (-not (Test-Path ".env")) {
-    "MSSQL_SA_PASSWORD=$databasePassword" | Set-Content ".env"
-} else {
-    $passwordLine = Get-Content ".env" | Where-Object { $_ -match '^MSSQL_SA_PASSWORD=' } | Select-Object -First 1
-    if ($passwordLine) { $databasePassword = $passwordLine.Substring("MSSQL_SA_PASSWORD=".Length) }
+    throw "Create .env from .env.example and replace every REPLACE_WITH value before starting CivicFlow."
 }
 
-docker compose up -d
+$settings = @{}
+Get-Content ".env" | ForEach-Object {
+    if ($_ -match '^\s*([^#][^=]*)=(.*)$') { $settings[$Matches[1].Trim()] = $Matches[2].Trim() }
+}
+foreach ($required in @("MSSQL_SA_PASSWORD", "CIVICFLOW_JWT_KEY", "CIVICFLOW_DEMO_PASSWORD")) {
+    if ([string]::IsNullOrWhiteSpace($settings[$required]) -or $settings[$required] -like "REPLACE_WITH*") {
+        throw "Set '$required' to a non-placeholder local value in .env."
+    }
+}
+
+$composeCommand = $null
+docker compose version 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) { $composeCommand = "plugin" }
+elseif (Get-Command docker-compose -ErrorAction SilentlyContinue) { $composeCommand = "standalone" }
+else { throw "Docker Compose was not found. Install Docker Desktop with Compose support." }
+
+if ($composeCommand -eq "plugin") { docker compose up -d }
+else { docker-compose up -d }
+if ($LASTEXITCODE -ne 0) { throw "Docker Compose failed to start SQL Server and Azurite." }
 
 Write-Host "Waiting for SQL Server..." -ForegroundColor Cyan
 for ($attempt = 1; $attempt -le 30; $attempt++) {
@@ -34,11 +48,13 @@ for ($attempt = 1; $attempt -le 30; $attempt++) {
 }
 if ($blobHealth -ne "healthy") { throw "Azurite did not become healthy. Check Docker Desktop and retry." }
 
-$apiCommand = @"
-`$env:ASPNETCORE_ENVIRONMENT='Development'
-`$env:ConnectionStrings__CivicFlowDatabase='Server=localhost,1433;Database=CivicFlow;User Id=sa;Password=$databasePassword;Encrypt=False;TrustServerCertificate=True'
-dotnet run --project '$ProjectRoot\src\CivicFlow.Api'
-"@
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+$env:ConnectionStrings__CivicFlowDatabase = "Server=localhost,1433;Database=CivicFlow;User Id=sa;Password=$($settings.MSSQL_SA_PASSWORD);Encrypt=False;TrustServerCertificate=True"
+$env:Jwt__Key = $settings.CIVICFLOW_JWT_KEY
+$env:DemoAccounts__Enabled = "true"
+$env:DemoAccounts__Password = $settings.CIVICFLOW_DEMO_PASSWORD
+
+$apiCommand = "dotnet run --project '$ProjectRoot\src\CivicFlow.Api'"
 
 $clientCommand = @"
 Set-Location '$ProjectRoot\src\CivicFlow.Client'
