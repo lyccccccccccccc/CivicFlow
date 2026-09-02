@@ -24,6 +24,10 @@ The public demo below uses a dedicated synthetic resident and fictional service-
 | ![Resident case detail showing the request summary, description and submitted progress](docs/images/civicflow-resident-case-detail.png) | ![CivicFlow My Requests mobile layout at 360 pixels wide](docs/images/civicflow-resident-mobile-360.png) |
 | A single view for the public timeline, request details and future conversation. | The same request workflow adapts to a compact mobile card layout. |
 
+![Manager operations dashboard showing service KPIs, case distributions and officer workload](docs/images/civicflow-manager-operations-dashboard.png)
+
+*Managers can filter operational KPIs, compare workload and prioritise cases approaching service targets.*
+
 ## Product workflow
 
 | Role | Workflow |

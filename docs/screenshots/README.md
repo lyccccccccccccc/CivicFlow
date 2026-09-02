@@ -9,5 +9,6 @@ Published images:
 3. Resident submission form with a professional synthetic report
 4. Resident request detail and progress
 5. Resident request list at a 360 px mobile viewport
+6. Manager operations dashboard with service KPIs and synthetic workload data
 
-Before committing an image, verify that it contains no real names, emails, addresses, credentials, tokens, browser profile details, local paths, connection information, Azure or GitHub identifiers, private Blob identifiers, developer tools, notifications, error states, or unrelated browser/desktop content. Staff and administrator surfaces are omitted unless a privately authenticated demo role is available; credentials must never appear in screenshots or documentation.
+Before committing an image, verify that it contains no real names, emails, addresses, credentials, tokens, browser profile details, local paths, connection information, Azure or GitHub identifiers, private Blob identifiers, developer tools, notifications, error states, or unrelated browser/desktop content. Staff and administrator surfaces may be included only from a privately authenticated demo role using clearly synthetic data; credentials must never appear in screenshots or documentation.
