@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TableSortLabel, TextField, Typography } from '@mui/material'
+import { Alert, Button, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TableSortLabel, TextField } from '@mui/material'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, type CaseItem, type Category, type Officer, type PagedResponse } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { EmptyState, PageHeader, PriorityChip, SlaStatus, StatusChip, TableSkeleton } from '../components/ui'
 
 const priorities = ['Low', 'Medium', 'High', 'Critical']
 const statuses = ['Submitted', 'Triaged', 'Assigned', 'InProgress', 'WaitingForResident', 'Resolved', 'Closed', 'Reopened', 'Rejected']
 const slaStates = ['OnTrack', 'AtRisk', 'Overdue', 'NoSla', 'Complete']
-const colours: Record<string, 'default' | 'info' | 'warning' | 'success' | 'error'> = { Submitted: 'info', Triaged: 'info', Assigned: 'warning', InProgress: 'warning', WaitingForResident: 'error', Resolved: 'success', Closed: 'default', Rejected: 'error', OnTrack: 'success', AtRisk: 'warning', Overdue: 'error' }
 
 export function CasesPage() {
   const { user } = useAuth(); const resident = user?.roles.includes('Resident'); const officer = user?.roles.includes('CaseOfficer')
-  const navigate = useNavigate()
   const canAssign = user?.roles.some(x => x === 'TeamManager' || x === 'SystemAdministrator') ?? false
   const [params, setParams] = useSearchParams(); const queryString = params.toString()
   const [result, setResult] = useState<PagedResponse<CaseItem> | null>(null); const [categories, setCategories] = useState<Category[]>([]); const [officers, setOfficers] = useState<Officer[]>([])
@@ -37,7 +36,7 @@ export function CasesPage() {
   const sortDirection = params.get('sortDirection') === 'asc' ? 'asc' : 'desc'
 
   return <Stack spacing={3}>
-    <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', gap: 2 }}><Box><Typography variant="h3">{heading}</Typography><Typography color="text.secondary">{resident ? 'Track every update from submission to closure.' : 'Filter, prioritise and manage operational work.'}</Typography></Box>{resident && <Button component={Link} to="/requests/new" variant="contained" startIcon={<AddRoundedIcon />}>New request</Button>}</Stack>
+    <PageHeader title={heading} description={resident ? 'Track every update from submission to closure.' : 'Filter, prioritise and manage operational work.'} actions={resident && <Button component={Link} to="/requests/new" variant="contained" startIcon={<AddRoundedIcon />}>New request</Button>} />
     {!resident && quickViews.length > 0 && <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>{quickViews.map(([label, value]) => <Button key={value} variant={params.get('quickView') === value ? 'contained' : 'outlined'} onClick={() => update('quickView', params.get('quickView') === value ? '' : value)}>{label}</Button>)}</Stack>}
     <Paper sx={{ p: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} useFlexGap sx={{ flexWrap: 'wrap' }}>
       <TextField size="small" label="Search reference, title or address" value={params.get('search') ?? ''} onChange={e => update('search', e.target.value)} sx={{ minWidth: 280, flexGrow: 1 }} />
@@ -51,7 +50,7 @@ export function CasesPage() {
       <Button onClick={clear}>Clear filters</Button>
     </Stack></Paper>
     {error && <Alert severity="error">{error}</Alert>}
-    {loading ? <CircularProgress /> : <Paper sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
+    {loading ? <Paper><TableSkeleton columns={resident ? 8 : 9} /></Paper> : <Paper sx={{ overflowX: 'auto' }} aria-busy="false"><Table size="small"><TableHead><TableRow>
       <Sortable label="Reference" name="reference" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       <Sortable label="Title" name="title" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       <Sortable label="Category" name="category" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
@@ -61,9 +60,9 @@ export function CasesPage() {
       <Sortable label="Submitted" name="submitted" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       <Sortable label="SLA due" name="due" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       <TableCell>SLA state</TableCell>
-    </TableRow></TableHead><TableBody>{result?.items.map(item => <TableRow hover key={item.id} onClick={() => navigate(`/cases/${item.id}`)} sx={{ cursor: 'pointer' }}>
-      <TableCell><strong>{item.referenceNumber}</strong></TableCell><TableCell sx={{ minWidth: 190 }}>{item.title}</TableCell><TableCell>{item.categoryName}</TableCell><TableCell><Chip size="small" label={item.priority} color={item.priority === 'Critical' ? 'error' : item.priority === 'High' ? 'warning' : 'default'} /></TableCell><TableCell><Chip size="small" color={colours[item.status] ?? 'default'} label={format(item.status)} /></TableCell>{!resident && <TableCell>{item.assignedOfficerName ?? 'Unassigned'}</TableCell>}<TableCell>{formatDate(item.submittedAtUtc)}</TableCell><TableCell>{item.resolutionDueAtUtc ? formatDate(item.resolutionDueAtUtc) : 'Not set'}</TableCell><TableCell><Chip size="small" color={colours[item.slaState] ?? 'default'} label={format(item.slaState)} /></TableCell>
-    </TableRow>)}{result?.items.length === 0 && <TableRow><TableCell colSpan={9}>No cases match the current filters.</TableCell></TableRow>}</TableBody></Table>
+    </TableRow></TableHead><TableBody>{result?.items.map(item => <TableRow hover key={item.id} sx={{ '&:focus-within': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}>
+      <TableCell><Button component={Link} to={`/cases/${item.id}`} variant="text" size="small" sx={{ minHeight: 36, p: 1, fontWeight: 850, whiteSpace: 'nowrap' }}>{item.referenceNumber}</Button></TableCell><TableCell sx={{ minWidth: 190 }}>{item.title}</TableCell><TableCell>{item.categoryName}</TableCell><TableCell><PriorityChip priority={item.priority} /></TableCell><TableCell><StatusChip status={item.status} /></TableCell>{!resident && <TableCell>{item.assignedOfficerName ?? 'Unassigned'}</TableCell>}<TableCell>{formatDate(item.submittedAtUtc)}</TableCell><TableCell>{item.resolutionDueAtUtc ? formatDate(item.resolutionDueAtUtc) : 'Not set'}</TableCell><TableCell><SlaStatus state={item.slaState} /></TableCell>
+    </TableRow>)}{result?.items.length === 0 && <TableRow><TableCell colSpan={9}><EmptyState title="No matching cases" description="Try changing or clearing the current filters." /></TableCell></TableRow>}</TableBody></Table>
       <TablePagination component="div" count={result?.totalCount ?? 0} page={Math.max(0, page - 1)} rowsPerPage={pageSize} rowsPerPageOptions={[10, 20, 50]} onPageChange={(_, next) => update('page', String(next + 1))} onRowsPerPageChange={e => update('pageSize', e.target.value)} />
     </Paper>}
   </Stack>
