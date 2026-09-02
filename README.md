@@ -6,6 +6,24 @@ CivicFlow is a full-stack civic service request and case-management application.
 
 **Live demo:** [Open CivicFlow on Azure](https://agreeable-island-0434b7f00.6.azurestaticapps.net)
 
+## Product tour
+
+The public demo below uses a dedicated synthetic resident and fictional service-request data. No staff credentials or private operational data are published.
+
+![CivicFlow landing page introducing secure and accountable community service requests](docs/images/civicflow-landing-desktop.png)
+
+*A focused public entry point explains the resident workflow and role-protected service model.*
+
+| Resident request tracking | Clear request submission |
+| --- | --- |
+| ![Resident My Requests page showing a submitted footpath request and service target](docs/images/civicflow-resident-my-requests.png) | ![Resident Submit Request page filled with a synthetic damaged-footpath report](docs/images/civicflow-resident-submit-request.png) |
+| Searchable request history with status and service-target visibility. | Structured category, description and location capture before submission. |
+
+| Request detail and progress | Responsive resident experience |
+| --- | --- |
+| ![Resident case detail showing the request summary, description and submitted progress](docs/images/civicflow-resident-case-detail.png) | ![CivicFlow My Requests mobile layout at 360 pixels wide](docs/images/civicflow-resident-mobile-360.png) |
+| A single view for the public timeline, request details and future conversation. | The same request workflow adapts to a compact mobile card layout. |
+
 ## Product workflow
 
 | Role | Workflow |
@@ -130,7 +148,7 @@ The current release candidate contains 11 domain/unit tests, 46 API integration 
 
 The responsive React experience now provides role-projected desktop and mobile navigation, consistent loading/error/empty states, keyboard-accessible case links, route-level code splitting, resident-focused request and conversation views, staff workbench cards, responsive administration and audit views, and self-service Profile & Security. Search inputs retain URL-based filters and browser history while debouncing API requests. Attachment actions are rendered only from the API-provided `canDelete` capability; the DELETE endpoint always reauthorizes independently.
 
-Accessibility checks cover semantic navigation, visible focus, keyboard interaction, responsive layouts and axe serious/critical rules for representative authentication, resident, staff and audit surfaces. Public screenshots are intentionally not committed until synthetic demo captures complete the privacy checklist in [`docs/screenshots/README.md`](docs/screenshots/README.md).
+Accessibility checks cover semantic navigation, visible focus, keyboard interaction, responsive layouts and axe serious/critical rules for representative authentication, resident, staff and audit surfaces. Published product screenshots use synthetic public-demo data and follow the privacy checklist in [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 ```powershell
 dotnet restore CivicFlow.sln
