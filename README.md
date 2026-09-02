@@ -8,25 +8,39 @@ CivicFlow is a full-stack civic service request and case-management application.
 
 ## Product tour
 
-The public demo below uses a dedicated synthetic resident and fictional service-request data. No staff credentials or private operational data are published.
+These original screenshots were provided by the project owner and contain synthetic demonstration data. No staff credentials or private operational data are published.
 
-![CivicFlow landing page introducing secure and accountable community service requests](docs/images/civicflow-landing-desktop.png)
+### Operations dashboard
 
-*A focused public entry point explains the resident workflow and role-protected service model.*
+![Operations dashboard showing open, unassigned, at-risk and overdue case counts with workload charts](docs/images/civicflow-owner-operations-dashboard.png)
 
-| Resident request tracking | Clear request submission |
-| --- | --- |
-| ![Resident My Requests page showing a submitted footpath request and service target](docs/images/civicflow-resident-my-requests.png) | ![Resident Submit Request page filled with a synthetic damaged-footpath report](docs/images/civicflow-resident-submit-request.png) |
-| Searchable request history with status and service-target visibility. | Structured category, description and location capture before submission. |
+*Monitor open cases, unassigned work, SLA risk and officer workload through a filterable operational dashboard.*
 
-| Request detail and progress | Responsive resident experience |
-| --- | --- |
-| ![Resident case detail showing the request summary, description and submitted progress](docs/images/civicflow-resident-case-detail.png) | ![CivicFlow My Requests mobile layout at 360 pixels wide](docs/images/civicflow-resident-mobile-360.png) |
-| A single view for the public timeline, request details and future conversation. | The same request workflow adapts to a compact mobile card layout. |
+### Case queue
 
-![Manager operations dashboard showing service KPIs, case distributions and officer workload](docs/images/civicflow-manager-operations-dashboard.png)
+![Case queue showing search and filters for priority, status, category, assigned officer and SLA state](docs/images/civicflow-owner-case-queue.png)
 
-*Managers can filter operational KPIs, compare workload and prioritise cases approaching service targets.*
+*Search and filter service requests by priority, status, category, assigned officer and SLA state.*
+
+### Case triage and assignment
+
+![Staff case detail showing the request map, service targets, priority, officer reassignment and attachments](docs/images/civicflow-owner-case-triage-assignment.png)
+
+*Review request details, set operational priority and service targets, assign officers and manage protected attachments.*
+
+### Communication and case history
+
+![Staff case detail showing resident conversation, internal notes, chronological activity and public messaging](docs/images/civicflow-owner-communication-history.png)
+
+*Separate public resident communication from internal notes while preserving a chronological case activity record.*
+
+### Resident request submission
+
+![Resident submission form showing service category, issue description, location and map pin](docs/images/civicflow-owner-resident-submit-details.png)
+
+![Resident submission review showing the map pin, attachment and request summary](docs/images/civicflow-owner-resident-submit-review.png)
+
+*Residents can select a service category, describe the issue, provide a location or map pin, attach supporting files and review the request before submission.*
 
 ## Product workflow
 
