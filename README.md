@@ -4,6 +4,8 @@ CivicFlow is a full-stack civic service request and case-management application.
 
 > Independent portfolio project. CivicFlow is not affiliated with the Queensland Government or any government organisation.
 
+**Live demo:** [Open CivicFlow on Azure](https://agreeable-island-0434b7f00.6.azurestaticapps.net)
+
 ## Product workflow
 
 | Role | Workflow |
