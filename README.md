@@ -122,7 +122,13 @@ Production startup fails when migrations are pending. Production releases use a 
 
 ## Tests and quality checks
 
-The sealed Phase 3A baseline contains 11 unit tests and 36 integration tests. Integration tests use isolated EF InMemory storage by default and can run against a supplied real SQL Server database without deleting it.
+The current release candidate contains 11 domain/unit tests, 46 API integration tests and 31 frontend component/accessibility tests. Integration tests use isolated EF InMemory storage by default and can run against a supplied real SQL Server database without deleting it.
+
+### Frontend Experience V1
+
+The responsive React experience now provides role-projected desktop and mobile navigation, consistent loading/error/empty states, keyboard-accessible case links, route-level code splitting, resident-focused request and conversation views, staff workbench cards, responsive administration and audit views, and self-service Profile & Security. Search inputs retain URL-based filters and browser history while debouncing API requests. Attachment actions are rendered only from the API-provided `canDelete` capability; the DELETE endpoint always reauthorizes independently.
+
+Accessibility checks cover semantic navigation, visible focus, keyboard interaction, responsive layouts and axe serious/critical rules for representative authentication, resident, staff and audit surfaces. Public screenshots are intentionally not committed until synthetic demo captures complete the privacy checklist in [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 ```powershell
 dotnet restore CivicFlow.sln
