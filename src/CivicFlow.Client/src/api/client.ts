@@ -10,7 +10,7 @@ export type Activity = { id: string; type: string; label: string; section: 'conv
 export type CaseAttachment = { id: string; originalFileName: string; contentType: string; sizeBytes: number; visibility: 'Public' | 'Internal'; uploadedAtUtc: string; uploadedByUserId: string }
 export type PagedResponse<T> = { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number }
 export type ChartRow = { label: string; count: number }
-export type DashboardData = { open: number; unassigned: number; atRisk: number; overdue: number; firstResponseBreached: number; waitingForResident: number; resolved: number; byStatus: ChartRow[]; byPriority: ChartRow[]; byCategory: ChartRow[]; officerWorkload: ChartRow[]; slaCases: Pick<CaseItem, 'id' | 'referenceNumber' | 'title' | 'priority' | 'status' | 'firstResponseDueAtUtc' | 'firstResponseCompletedAtUtc' | 'resolutionDueAtUtc' | 'categoryName' | 'firstResponseSlaState' | 'resolutionSlaState' | 'slaState' | 'nextSlaDueAtUtc' | 'nextSlaTarget'>[] }
+export type DashboardData = { open: number; unassigned: number; atRisk: number; overdue: number; firstResponseBreached: number; waitingForResident: number; resolved: number; byStatus: ChartRow[]; byPriority: ChartRow[]; byCategory: ChartRow[]; officerWorkload: ChartRow[]; slaCases: Pick<CaseItem, 'id' | 'referenceNumber' | 'title' | 'priority' | 'status' | 'assignedOfficerName' | 'firstResponseDueAtUtc' | 'firstResponseCompletedAtUtc' | 'resolutionDueAtUtc' | 'categoryName' | 'firstResponseSlaState' | 'resolutionSlaState' | 'slaState' | 'nextSlaDueAtUtc' | 'nextSlaTarget'>[] }
 
 function savedAuth(): AuthResponse | null {
   try { return JSON.parse(localStorage.getItem('civicflow.auth') ?? 'null') as AuthResponse | null } catch { return null }
