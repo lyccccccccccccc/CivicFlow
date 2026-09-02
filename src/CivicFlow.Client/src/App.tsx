@@ -17,6 +17,7 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(mo
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const AdminPage = lazy(() => import('./pages/AdminPage').then(module => ({ default: module.AdminPage })))
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then(module => ({ default: module.AuditLogPage })))
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then(module => ({ default: module.ProfilePage })))
 
 function HomeRedirect() {
   const { user } = useAuth()
@@ -29,7 +30,7 @@ const lazyPage = (page: ReactNode) => <LazyRouteBoundary>{page}</LazyRouteBounda
 export default function App() {
   return <ThemeProvider theme={civicTheme}><CssBaseline /><BrowserRouter><AuthProvider><Routes>
     <Route element={<AppShell />}><Route index element={lazyPage(<LandingPage />)} /><Route path="login" element={lazyPage(<LoginPage />)} /><Route path="register" element={lazyPage(<RegisterPage />)} />
-      <Route element={<ProtectedRoute />}><Route path="home" element={<HomeRedirect />} /><Route path="requests" element={lazyPage(<CasesPage />)} /><Route path="cases/:id" element={lazyPage(<CaseDetailPage />)} /><Route path="requests/new" element={lazyPage(<NewRequestPage />)} /><Route path="notifications" element={lazyPage(<NotificationsPage />)} /></Route>
+      <Route element={<ProtectedRoute />}><Route path="home" element={<HomeRedirect />} /><Route path="profile" element={lazyPage(<ProfilePage />)} /><Route path="requests" element={lazyPage(<CasesPage />)} /><Route path="cases/:id" element={lazyPage(<CaseDetailPage />)} /><Route path="requests/new" element={lazyPage(<NewRequestPage />)} /><Route path="notifications" element={lazyPage(<NotificationsPage />)} /></Route>
       <Route element={<ProtectedRoute staff />}><Route path="cases" element={lazyPage(<CasesPage />)} /><Route path="dashboard" element={lazyPage(<DashboardPage />)} /></Route>
       <Route element={<ProtectedRoute role="SystemAdministrator" />}><Route path="admin" element={lazyPage(<AdminPage />)} /></Route>
       <Route element={<ProtectedRoute managers />}><Route path="admin/audit-log" element={lazyPage(<AuditLogPage />)} /></Route>
