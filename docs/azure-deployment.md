@@ -29,6 +29,10 @@ The API uses its system-assigned managed identity. Grant it `Storage Blob Data C
 
 Runtime configuration is supplied through Container Apps secrets and environment variables. Never commit or print values for JWT signing material, demo credentials, SQL administrator credentials, deployment tokens, or identifiers used for federation.
 
+Azure SQL uses Microsoft Entra-only authentication. The server firewall contains only Azure SQL's `0.0.0.0` Azure-services rule; it must never contain an all-internet range or a retained developer IP. This is the no-NAT/no-private-endpoint staging compromise: authentication and least-privilege database grants remain the primary boundary. Production deployments should reassess private networking before handling real data.
+
+Run migrations under the designated Entra deployment administrator, then create a contained user for the Container App system-assigned identity. Grant that user only `db_datareader`, `db_datawriter`, and any narrowly required execute permissions; never grant `db_owner` or DDL rights. After the one-time initialization, keep `DatabaseMigration__AutoMigrate`, `DatabaseInitialization__SeedReferenceData`, and `DemoAccounts__Enabled` disabled and remove the demo password from the Container App configuration.
+
 Required API configuration names:
 
 - `ConnectionStrings__CivicFlowDatabase`
