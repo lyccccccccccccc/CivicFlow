@@ -28,5 +28,5 @@ export function RegisterPage() {
 }
 
 function AuthCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return <Paper sx={{ maxWidth: 520, mx: 'auto', p: { xs: 3, sm: 5 } }}><Typography variant="h4" sx={{ fontWeight: 850 }}>{title}</Typography><Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>{subtitle}</Typography>{children}</Paper>
+  return <Paper sx={{ maxWidth: 520, mx: 'auto', p: { xs: 3, sm: 5 } }}><Typography component="h1" variant="h4" sx={{ fontWeight: 850 }}>{title}</Typography><Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>{subtitle}</Typography>{children}</Paper>
 }

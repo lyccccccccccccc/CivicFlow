@@ -22,7 +22,7 @@ export function AppShell() {
     <AppBar position="sticky" elevation={0} sx={{ borderBottom: '1px solid', borderColor: 'rgba(255,255,255,.18)' }}>
       <Toolbar sx={{ maxWidth: civicTokens.layout.maxWidth, width: '100%', mx: 'auto', px: { xs: 4, sm: 6 } }}>
         {user && <IconButton color="inherit" aria-label="Open main menu" aria-controls="mobile-navigation" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' }, mr: 2 }}><MenuRoundedIcon /></IconButton>}
-        <Typography component={Link} to="/" variant="h6" color="inherit" sx={{ textDecoration: 'none', fontWeight: 900 }}>CivicFlow</Typography>
+        <Typography component={Link} to="/" variant="h6" sx={{ color: 'inherit', textDecoration: 'none', fontWeight: 900 }}>CivicFlow</Typography>
         <Stack component="nav" aria-label="Main navigation" direction="row" spacing={1} sx={{ ml: 4, flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
           {navigation.map(item => <Button key={item.to} color="inherit" component={Link} to={item.to} aria-current={location.pathname === item.to ? 'page' : undefined} sx={{ bgcolor: location.pathname === item.to ? 'rgba(255,255,255,.13)' : undefined }}>{item.label}</Button>)}
         </Stack>
