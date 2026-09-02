@@ -23,7 +23,7 @@ Key engineering features include API-enforced RBAC and resident isolation, first
 | API | C# 14, ASP.NET Core 10 controller API, OpenAPI, JWT authentication |
 | Persistence | EF Core 10 migrations, SQL Server 2022, ASP.NET Core Identity |
 | Files | Private Azure Blob Storage in production; Azurite locally |
-| Delivery | Docker Compose, PowerShell developer launcher, GitHub Actions |
+| Delivery | Docker Compose, Railway-ready containers, Caddy, PowerShell developer launcher, GitHub Actions |
 | Tests | xUnit domain, API integration, real SQL Server, and storage smoke tests |
 
 ## Architecture
@@ -158,6 +158,12 @@ For real SQL integration, set `CIVICFLOW_TEST_SQL` to a dedicated test database 
 
 See [SECURITY.md](SECURITY.md) before deploying. This project is a portfolio-quality reference implementation, not a certified government production service.
 
+## Railway staging architecture
+
+CivicFlow can be deployed from this monorepo as four Railway services: a Caddy-served React frontend, the ASP.NET Core API, private SQL Server, and private Azurite. Only the frontend and API receive public domains. SQL Server persists `/var/opt/mssql`; Azurite persists `/data`. The frontend uses same-origin `/api` requests and Caddy forwards them to the API over Railway private networking, while SPA fallback keeps deep-link refreshes working.
+
+The API binds Railway's `PORT` on `0.0.0.0`. Connection strings, JWT signing material, CORS origin, migration controls, demo seed controls, and Blob settings come exclusively from environment variables. A fresh staging database may opt into automatic migrations and demo/reference seed; production remains fail-closed and does not expose demo credentials. Follow the complete [Railway deployment runbook](docs/railway-deployment.md).
+
 ## Troubleshooting
 
 - **`docker compose` is unavailable:** install/update Docker Desktop or use `docker-compose`; the launcher supports both.
@@ -176,12 +182,13 @@ See [SECURITY.md](SECURITY.md) before deploying. This project is a portfolio-qua
 - [Product scope](docs/product-scope.md)
 - [Phase 3A acceptance evidence](docs/phase3a-acceptance-report.md)
 - [Screenshot checklist](docs/screenshots/README.md)
+- [Railway staging deployment](docs/railway-deployment.md)
 
 ## Known limitations and roadmap
 
 - Malware scanning and quarantine are required before production use.
 - OpenStreetMap tiles are intended for local/low-volume use; production must review the tile policy or configure another provider.
-- The main JavaScript bundle is larger than 500 kB and is a candidate for route-level code splitting.
+- Route-level code splitting keeps the current entry chunk below 500 kB; further bundle monitoring remains part of release checks.
 - Physical Blob cleanup after the 30-day retention window is automated but has not been observed through a real 30-day manual wait.
 - Future work may add email/SMS delivery, accessibility audits, geocoding/provider adapters, richer observability, and deployment infrastructure.
 
