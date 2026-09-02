@@ -2,14 +2,67 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CivicFlow.Infrastructure.Identity;
+using CivicFlow.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CivicFlow.IntegrationTests;
 
 public sealed class StaffOperationsTests : IClassFixture<CivicFlowFactory>
 {
     private readonly HttpClient _client;
+    private readonly CivicFlowFactory _factory;
 
-    public StaffOperationsTests(CivicFlowFactory factory) => _client = factory.CreateClient();
+    public StaffOperationsTests(CivicFlowFactory factory) { _factory = factory; _client = factory.CreateClient(); }
+
+    [Fact]
+    public async Task TwoOfficersWithSameDisplayName_AreDisambiguatedByEmailAndAssignedById()
+    {
+        var manager = await Login("manager@civicflow.local");
+        using var scope = _factory.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var duplicateEmail = $"casey-{Guid.NewGuid():N}@example.test";
+        var duplicate = new ApplicationUser { Id = Guid.NewGuid(), Email = duplicateEmail, UserName = duplicateEmail, EmailConfirmed = true, FirstName = "Casey", LastName = "Officer", IsActive = true, CreatedAtUtc = DateTimeOffset.UtcNow };
+        Assert.True((await users.CreateAsync(duplicate, TestCredentials.Password)).Succeeded);
+        Assert.True((await users.AddToRoleAsync(duplicate, CivicFlowRoles.CaseOfficer)).Succeeded);
+        Authorize(manager.Token);
+        var candidates = await _client.GetFromJsonAsync<JsonElement>("/api/officers");
+        var sameNames = candidates.EnumerateArray().Where(x => x.GetProperty("firstName").GetString() == "Casey" && x.GetProperty("lastName").GetString() == "Officer").ToList();
+        Assert.True(sameNames.Count >= 2); Assert.Equal(sameNames.Count, sameNames.Select(x => x.GetProperty("id").GetGuid()).Distinct().Count()); Assert.All(sameNames, x => Assert.False(string.IsNullOrWhiteSpace(x.GetProperty("email").GetString())));
+    }
+
+    [Fact]
+    public async Task DisabledOfficer_IsExcludedFromAssignmentCandidates()
+    {
+        var manager = await Login("manager@civicflow.local"); var admin = await Login("admin@civicflow.local"); var officer = await Login("officer@civicflow.local");
+        Authorize(admin.Token); Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync($"/api/admin/users/{officer.UserId}/active", new { isActive = false })).StatusCode);
+        try { Authorize(manager.Token); var candidates = await _client.GetFromJsonAsync<JsonElement>("/api/officers"); Assert.DoesNotContain(candidates.EnumerateArray(), x => x.GetProperty("id").GetGuid() == officer.UserId); }
+        finally { Authorize(admin.Token); await _client.PutAsJsonAsync($"/api/admin/users/{officer.UserId}/active", new { isActive = true }); }
+    }
+
+    [Fact]
+    public async Task Assignment_ToOfficerId_AppearsInThatOfficersMineQueue_AndSameAssignmentIsNoOp()
+    {
+        var resident = await Login("resident@civicflow.local"); var manager = await Login("manager@civicflow.local"); var email = $"mine-{Guid.NewGuid():N}@example.test";
+        using (var setupScope = _factory.Services.CreateScope()) { var users = setupScope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>(); var user = new ApplicationUser { Id = Guid.NewGuid(), Email = email, UserName = email, EmailConfirmed = true, FirstName = "Mine", LastName = "Officer", IsActive = true, CreatedAtUtc = DateTimeOffset.UtcNow }; Assert.True((await users.CreateAsync(user, TestCredentials.Password)).Succeeded); Assert.True((await users.AddToRoleAsync(user, CivicFlowRoles.CaseOfficer)).Succeeded); }
+        var officer = await Login(email); var caseId = await CreateCase(resident.Token, $"Mine assignment {Guid.NewGuid():N}");
+        Authorize(manager.Token); Assert.Equal(HttpStatusCode.NoContent, (await _client.PostAsJsonAsync($"/api/cases/{caseId}/triage", new { priority = "High" })).StatusCode); var firstAssignment = await _client.PostAsJsonAsync($"/api/cases/{caseId}/assign", new { officerId = officer.UserId }); Assert.True(firstAssignment.StatusCode == HttpStatusCode.NoContent, await firstAssignment.Content.ReadAsStringAsync());
+        using var beforeScope = _factory.Services.CreateScope(); var beforeDb = beforeScope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var beforeActivities = await beforeDb.CaseActivities.CountAsync(x => x.ServiceRequestId == caseId); var beforeNotices = await beforeDb.UserNotifications.CountAsync(x => x.ServiceRequestId == caseId && x.UserId == officer.UserId);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PostAsJsonAsync($"/api/cases/{caseId}/assign", new { officerId = officer.UserId })).StatusCode);
+        using var afterScope = _factory.Services.CreateScope(); var afterDb = afterScope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); Assert.Equal(beforeActivities, await afterDb.CaseActivities.CountAsync(x => x.ServiceRequestId == caseId)); Assert.Equal(beforeNotices, await afterDb.UserNotifications.CountAsync(x => x.ServiceRequestId == caseId && x.UserId == officer.UserId));
+        Authorize(officer.Token); var mine = await _client.GetFromJsonAsync<JsonElement>("/api/cases?mine=true&pageSize=100"); Assert.Contains(mine.GetProperty("items").EnumerateArray(), x => x.GetProperty("id").GetGuid() == caseId);
+    }
+
+    [Fact]
+    public async Task AssignmentCandidateDirectory_IsManagerOnly_AndResidentProjectionDoesNotExposeEmail()
+    {
+        var resident = await Login("resident@civicflow.local"); var officer = await Login("officer@civicflow.local"); var manager = await Login("manager@civicflow.local");
+        Authorize(officer.Token); Assert.Equal(HttpStatusCode.Forbidden, (await _client.GetAsync("/api/officers")).StatusCode);
+        Authorize(manager.Token); Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/officers")).StatusCode);
+        var caseId = await CreateCase(resident.Token, $"Projection privacy {Guid.NewGuid():N}"); Authorize(resident.Token); var json = await _client.GetStringAsync($"/api/cases/{caseId}"); Assert.DoesNotContain("@civicflow.local", json, StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public async Task StaffWorkflow_SupportsPagingTriageAssignmentAndResolutionAudit()
