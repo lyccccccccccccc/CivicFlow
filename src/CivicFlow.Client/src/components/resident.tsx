@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Alert, Box, Button, Chip, IconButton, InputAdornment, Paper, Stack, TextField, Typography, type AlertColor, type TextFieldProps } from '@mui/material'
+import { Alert, Box, Button, Chip, IconButton, InputAdornment, Paper, Stack, TextField, Tooltip, Typography, type AlertColor, type TextFieldProps } from '@mui/material'
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import RemoveRedEyeRoundedIcon from '@mui/icons-material/RemoveRedEyeRounded'
@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import type { CaseAttachment, CaseItem } from '../api/client'
 import { StatusChip } from './ui'
 import { formatBytes, residentServiceMessage } from './residentFormatting'
+import { formatDate, formatDateTime } from './formatting'
 
 export function PasswordField({ label = 'Password', autoComplete, helperText, ...props }: Omit<TextFieldProps, 'type'> & { autoComplete: 'current-password' | 'new-password' }) {
   const [visible, setVisible] = useState(false)
@@ -40,14 +41,14 @@ export function ActiveFilterSummary({ search, status, onClear }: { search?: stri
 type ResidentCardItem = Pick<CaseItem, 'id' | 'referenceNumber' | 'title' | 'status' | 'categoryName' | 'submittedAtUtc' | 'slaState'>
 export function ResidentRequestCard({ item }: { item: ResidentCardItem }) {
   return <Paper component="article" sx={{ p: 5 }}><Stack spacing={3}>
-    <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}><Box><Typography variant="overline" color="primary.main" sx={{ fontWeight: 850 }}>{item.referenceNumber}</Typography><Typography component="h2" variant="h6">{item.title}</Typography></Box><StatusChip status={item.status} /></Stack>
-    <Stack spacing={1}><Typography variant="body2"><strong>Category:</strong> {item.categoryName}</Typography><Typography variant="body2" color="text.secondary">Submitted {new Date(item.submittedAtUtc).toLocaleDateString([], { dateStyle: 'medium' })}</Typography></Stack>
-    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{residentServiceMessage(item)}</Typography><Button component={Link} to={`/cases/${item.id}`} variant="outlined">View request</Button></Stack>
+    <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}><Box sx={{ minWidth: 0 }}><Typography title={item.referenceNumber} variant="overline" color="primary.main" sx={{ fontWeight: 850, overflowWrap: 'anywhere' }}>{item.referenceNumber}</Typography><Typography title={item.title} component="h2" variant="h6" sx={{ overflowWrap: 'anywhere' }}>{item.title}</Typography></Box><StatusChip status={item.status} /></Stack>
+    <Stack spacing={1}><Typography title={item.categoryName} variant="body2" sx={{ overflowWrap: 'anywhere' }}><strong>Category:</strong> {item.categoryName}</Typography><Typography variant="body2" color="text.secondary">Submitted {formatDate(item.submittedAtUtc)}</Typography></Stack>
+    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}><Tooltip arrow title="This reflects the current first-response and resolution targets for your request."><Typography tabIndex={0} variant="body2" sx={{ fontWeight: 700 }}>{residentServiceMessage(item).replace('approaching', 'due soon')}</Typography></Tooltip><Button component={Link} to={`/cases/${item.id}`} variant="outlined">View request</Button></Stack>
   </Stack></Paper>
 }
 
 export function AttachmentListItem({ item, actions, metaPrefix }: { item: Pick<CaseAttachment, 'originalFileName' | 'sizeBytes' | 'uploadedAtUtc'>; actions: ReactNode; metaPrefix?: string }) {
-  return <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ py: 3, borderBottom: '1px solid', borderColor: 'divider', alignItems: { sm: 'center' }, justifyContent: 'space-between' }}><Stack direction="row" spacing={2} sx={{ minWidth: 0 }}><AttachFileRoundedIcon color="action" /><Box sx={{ minWidth: 0 }}><Typography title={item.originalFileName} sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{item.originalFileName}</Typography><Typography variant="caption" color="text.secondary">{metaPrefix && `${metaPrefix} · `}{formatBytes(item.sizeBytes)} · {new Date(item.uploadedAtUtc).toLocaleString()}</Typography></Box></Stack><Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: 'wrap' }}>{actions}</Stack></Stack>
+  return <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ py: 3, borderBottom: '1px solid', borderColor: 'divider', alignItems: { sm: 'center' }, justifyContent: 'space-between' }}><Stack direction="row" spacing={2} sx={{ minWidth: 0 }}><AttachFileRoundedIcon color="action" /><Box sx={{ minWidth: 0 }}><Typography title={item.originalFileName} sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{item.originalFileName}</Typography><Typography variant="caption" color="text.secondary">{metaPrefix && `${metaPrefix} · `}{formatBytes(item.sizeBytes)} · {formatDateTime(item.uploadedAtUtc)}</Typography></Box></Stack><Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: 'wrap' }}>{actions}</Stack></Stack>
 }
 
 export function SelectedFileItem({ file, onRemove }: { file: File; onRemove: () => void }) {
@@ -60,7 +61,7 @@ export function TimelineItem({ title, message, meta, publicEntry = true }: { tit
 
 export type NotificationView = { id: string; serviceRequestId?: string; title: string; message: string; readAtUtc?: string; createdAtUtc: string }
 export function NotificationGroup({ label, items, pending, onRead }: { label: string; items: NotificationView[]; pending: string[]; onRead: (id: string) => void }) {
-  return <Stack component="section" spacing={3} aria-labelledby={`notification-${slug(label)}`}><Typography id={`notification-${slug(label)}`} component="h2" variant="h5">{label}</Typography>{items.map(item => <Paper component="article" key={item.id} sx={{ p: { xs: 4, sm: 5 }, borderLeft: '4px solid', borderLeftColor: item.readAtUtc ? 'divider' : 'primary.main', bgcolor: item.readAtUtc ? 'background.paper' : '#f5faff' }}><Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', gap: 4 }}><Box>{!item.readAtUtc && <Chip label="Unread" size="small" color="info" sx={{ mb: 2 }} />}<Typography sx={{ fontWeight: item.readAtUtc ? 700 : 850 }}>{item.title}</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>{item.message}</Typography><Typography variant="caption" color="text.secondary">{new Date(item.createdAtUtc).toLocaleString()}</Typography></Box><Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>{item.serviceRequestId && <Button component={Link} to={`/cases/${item.serviceRequestId}`}>Open request</Button>}{!item.readAtUtc && <Button disabled={pending.includes(item.id)} onClick={() => onRead(item.id)}>{pending.includes(item.id) ? 'Saving…' : 'Mark read'}</Button>}</Stack></Stack></Paper>)}</Stack>
+  return <Stack component="section" spacing={3} aria-labelledby={`notification-${slug(label)}`}><Typography id={`notification-${slug(label)}`} component="h2" variant="h5">{label}</Typography>{items.map(item => <Paper component="article" key={item.id} sx={{ p: { xs: 4, sm: 5 }, borderLeft: '4px solid', borderLeftColor: item.readAtUtc ? 'divider' : 'primary.main', bgcolor: item.readAtUtc ? 'background.paper' : '#f5faff' }}><Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', gap: 4 }}><Box>{!item.readAtUtc && <Chip label="Unread" size="small" color="info" sx={{ mb: 2 }} />}<Typography sx={{ fontWeight: item.readAtUtc ? 700 : 850 }}>{item.title}</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>{item.message}</Typography><Typography variant="caption" color="text.secondary">{formatDateTime(item.createdAtUtc)}</Typography></Box><Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>{item.serviceRequestId && <Button component={Link} to={`/cases/${item.serviceRequestId}`}>Open request</Button>}{!item.readAtUtc && <Button disabled={pending.includes(item.id)} onClick={() => onRead(item.id)}>{pending.includes(item.id) ? 'Saving…' : 'Mark read'}</Button>}</Stack></Stack></Paper>)}</Stack>
 }
 
 const friendly = (value: string) => ({ WaitingForResident: 'Waiting for resident', InProgress: 'In progress' }[value] ?? value)

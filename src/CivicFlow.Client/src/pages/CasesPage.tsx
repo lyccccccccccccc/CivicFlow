@@ -6,6 +6,7 @@ import { api, type CaseItem, type Category, type Officer, type PagedResponse } f
 import { useAuth } from '../auth/AuthContext'
 import { EmptyState, ErrorState, PageHeader, PriorityChip, SlaStatus, StatusChip, TableSkeleton } from '../components/ui'
 import { ActiveFilterSummary, ResidentRequestCard, ResponsiveDataView } from '../components/resident'
+import { formatDateTime } from '../components/formatting'
 
 const priorities = ['Low', 'Medium', 'High', 'Critical']
 const statuses = ['Submitted', 'Triaged', 'Assigned', 'InProgress', 'WaitingForResident', 'Resolved', 'Closed', 'Reopened', 'Rejected']
@@ -48,7 +49,7 @@ export function CasesPage() {
       {!resident && <TextField select size="small" label="SLA state" value={params.get('slaState') ?? ''} onChange={e => update('slaState', e.target.value)} sx={{ minWidth: 140 }}><MenuItem value="">All</MenuItem>{slaStates.map(x => <MenuItem key={x} value={x}>{format(x)}</MenuItem>)}</TextField>}
       {!resident && <TextField size="small" type="date" label="Due from" value={params.get('dueFrom')?.slice(0, 10) ?? ''} onChange={e => update('dueFrom', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />}
       {!resident && <TextField size="small" type="date" label="Due to" value={params.get('dueTo')?.slice(0, 10) ?? ''} onChange={e => update('dueTo', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />}
-      <Button onClick={clear}>Clear filters</Button>
+      {(params.get('search') || params.get('status') || (!resident && [...params.keys()].some(key => !['page', 'pageSize', 'mine'].includes(key)))) && <Button onClick={clear}>Clear filters</Button>}
     </Stack></Paper>
     {resident && <ActiveFilterSummary search={params.get('search') ?? undefined} status={params.get('status') ?? undefined} onClear={clear} />}
     {error && <ErrorState title="Unable to load requests" message={error} retry={() => window.location.reload()} />}
@@ -75,5 +76,5 @@ function Sortable({ label, name, active, direction, onSort }: { label: string; n
   return <TableCell sortDirection={active === name ? direction : false}><TableSortLabel active={active === name} direction={active === name ? direction : 'asc'} onClick={() => onSort(name)}>{label}</TableSortLabel></TableCell>
 }
 const format = (value: string) => ({ WaitingForResident: 'Waiting for resident', InProgress: 'In progress', OnTrack: 'On track', AtRisk: 'At risk', NoSla: 'No SLA' }[value] ?? value)
-const formatDate = (value: string) => new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-const residentTarget = (status: string, state: string) => ['Resolved', 'Closed'].includes(status) ? 'Complete' : state === 'Overdue' ? 'Overdue' : state === 'AtRisk' ? 'Approaching' : 'On track'
+const formatDate = formatDateTime
+const residentTarget = (status: string, state: string) => ['Resolved', 'Closed'].includes(status) ? 'Complete' : state === 'Overdue' ? 'Overdue' : state === 'AtRisk' ? 'Due soon' : 'On track'
