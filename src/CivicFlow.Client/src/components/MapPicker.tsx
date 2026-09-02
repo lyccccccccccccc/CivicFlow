@@ -14,7 +14,7 @@ export function MapPicker({ value, onChange }: { value?: MapPoint; onChange: (va
     <Typography sx={{ fontWeight: 700 }}>Pin the location (optional)</Typography>
     <Typography variant="body2" color="text.secondary">Click the map to place or move the marker. The address above remains required.</Typography>
     {unavailable && <Alert severity="warning">Map tiles are unavailable. You can still submit the request using the written address.</Alert>}
-    <MapContainer center={value ? [value.latitude, value.longitude] : defaultCentre} zoom={value ? 16 : 11} style={{ height: 340, width: '100%', borderRadius: 8 }}>
+    <MapContainer center={value ? [value.latitude, value.longitude] : defaultCentre} zoom={value ? 16 : 11} style={{ height: 'clamp(220px, 45vw, 340px)', width: '100%', borderRadius: 8 }}>
       <TileLayer url={tileUrl} attribution={attribution} eventHandlers={{ tileerror: () => setUnavailable(true) }} />
       <MapClick onChange={onChange} />
       {value && <CircleMarker center={[value.latitude, value.longitude]} radius={9} pathOptions={{ color: '#b42318', fillOpacity: 0.85 }} />}
