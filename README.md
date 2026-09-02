@@ -4,6 +4,8 @@ CivicFlow is a full-stack civic service request and case-management application.
 
 > Independent portfolio project. CivicFlow is not affiliated with the Queensland Government or any government organisation.
 
+**Live demo:** [Open CivicFlow on Azure](https://agreeable-island-0434b7f00.6.azurestaticapps.net)
+
 ## Product workflow
 
 | Role | Workflow |
@@ -23,7 +25,7 @@ Key engineering features include API-enforced RBAC and resident isolation, first
 | API | C# 14, ASP.NET Core 10 controller API, OpenAPI, JWT authentication |
 | Persistence | EF Core 10 migrations, SQL Server 2022, ASP.NET Core Identity |
 | Files | Private Azure Blob Storage in production; Azurite locally |
-| Delivery | Docker Compose, PowerShell developer launcher, GitHub Actions |
+| Delivery | Docker Compose, Azure Static Web Apps, Azure Container Apps, GHCR, PowerShell developer launcher, GitHub Actions |
 | Tests | xUnit domain, API integration, real SQL Server, and storage smoke tests |
 
 ## Architecture
@@ -122,7 +124,13 @@ Production startup fails when migrations are pending. Production releases use a 
 
 ## Tests and quality checks
 
-The sealed Phase 3A baseline contains 11 unit tests and 36 integration tests. Integration tests use isolated EF InMemory storage by default and can run against a supplied real SQL Server database without deleting it.
+The current release candidate contains 11 domain/unit tests, 46 API integration tests and 31 frontend component/accessibility tests. Integration tests use isolated EF InMemory storage by default and can run against a supplied real SQL Server database without deleting it.
+
+### Frontend Experience V1
+
+The responsive React experience now provides role-projected desktop and mobile navigation, consistent loading/error/empty states, keyboard-accessible case links, route-level code splitting, resident-focused request and conversation views, staff workbench cards, responsive administration and audit views, and self-service Profile & Security. Search inputs retain URL-based filters and browser history while debouncing API requests. Attachment actions are rendered only from the API-provided `canDelete` capability; the DELETE endpoint always reauthorizes independently.
+
+Accessibility checks cover semantic navigation, visible focus, keyboard interaction, responsive layouts and axe serious/critical rules for representative authentication, resident, staff and audit surfaces. Public screenshots are intentionally not committed until synthetic demo captures complete the privacy checklist in [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 ```powershell
 dotnet restore CivicFlow.sln
@@ -152,6 +160,12 @@ For real SQL integration, set `CIVICFLOW_TEST_SQL` to a dedicated test database 
 
 See [SECURITY.md](SECURITY.md) before deploying. This project is a portfolio-quality reference implementation, not a certified government production service.
 
+## Azure staging architecture
+
+The public staging architecture uses Azure Static Web Apps Free for the Vite client, Azure Container Apps Consumption for the API, the Azure SQL Database free offer, and a private Standard LRS Blob container. The API uses system-assigned Managed Identity for SQL and Blob access. GitHub Actions publishes the public API image to GHCR and deploys both application surfaces without committed cloud credentials.
+
+Cost controls include a monthly budget, SQL free-limit auto-pause, Container Apps scale-to-zero with a single-replica maximum, capped Log Analytics ingestion, and no ACR, NAT Gateway, Private Endpoint, Defender plan, or paid support plan. Follow the [Azure staging runbook](docs/azure-deployment.md). The earlier [Railway runbook](docs/railway-deployment.md) remains as historical deployment documentation.
+
 ## Troubleshooting
 
 - **`docker compose` is unavailable:** install/update Docker Desktop or use `docker-compose`; the launcher supports both.
@@ -170,12 +184,14 @@ See [SECURITY.md](SECURITY.md) before deploying. This project is a portfolio-qua
 - [Product scope](docs/product-scope.md)
 - [Phase 3A acceptance evidence](docs/phase3a-acceptance-report.md)
 - [Screenshot checklist](docs/screenshots/README.md)
+- [Azure staging deployment](docs/azure-deployment.md)
+- [Railway staging deployment](docs/railway-deployment.md)
 
 ## Known limitations and roadmap
 
 - Malware scanning and quarantine are required before production use.
 - OpenStreetMap tiles are intended for local/low-volume use; production must review the tile policy or configure another provider.
-- The main JavaScript bundle is larger than 500 kB and is a candidate for route-level code splitting.
+- Route-level code splitting keeps the current entry chunk below 500 kB; further bundle monitoring remains part of release checks.
 - Physical Blob cleanup after the 30-day retention window is automated but has not been observed through a real 30-day manual wait.
 - Future work may add email/SMS delivery, accessibility audits, geocoding/provider adapters, richer observability, and deployment infrastructure.
 

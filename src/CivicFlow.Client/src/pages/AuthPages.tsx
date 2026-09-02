@@ -1,32 +1,27 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Alert, Button, Paper, Stack, TextField, Typography } from '@mui/material'
-import { Link, useNavigate } from 'react-router-dom'
+import { Alert, Box, Button, Grid, LinearProgress, Paper, Stack, TextField, Typography } from '@mui/material'
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import LockRoundedIcon from '@mui/icons-material/LockRounded'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { PasswordField } from '../components/resident'
+import { developmentDemoEmails } from '../config/demoAccounts'
 
 export function LoginPage() {
-  const { login } = useAuth(); const navigate = useNavigate()
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
-  const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(''); try { await login(email, password); navigate('/home') } catch (e) { setError(e instanceof Error ? e.message : 'Sign in failed') } finally { setBusy(false) } }
-  return <AuthCard title="Welcome back" subtitle="Sign in to manage or track requests."><Stack component="form" spacing={2} onSubmit={submit}>
-    {error && <Alert severity="error">{error}</Alert>}<TextField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus /><TextField label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-    <Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
-    <Typography variant="body2" sx={{ textAlign: 'center' }}>New resident? <Link to="/register">Create an account</Link></Typography>
-    {import.meta.env.DEV && <Alert severity="info">Local development demo accounts: resident@, officer@, manager@ or admin@civicflow.local. Use the password configured in your local environment.</Alert>}
-  </Stack></AuthCard>
+  const { login } = useAuth(); const navigate = useNavigate(); const [params] = useSearchParams(); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (busy) return; setBusy(true); setError(''); try { await login(email, password); navigate(safeReturnUrl(params.get('returnUrl'))) } catch (e) { setError(e instanceof Error ? e.message : 'Sign in failed') } finally { setBusy(false) } }
+  const demoEmails = import.meta.env.DEV ? developmentDemoEmails() : []
+  return <AuthLayout title="Welcome back" subtitle="Sign in to track requests, reply to the service team and review outcomes."><Stack component="form" spacing={4} onSubmit={submit} aria-busy={busy}>{busy && <LinearProgress aria-label="Signing in" />}{params.get('reason') === 'password-changed' && <Alert severity="success" role="status">Password changed. Sign in again with your new password.</Alert>}{error && <Alert severity="error" role="alert" aria-live="assertive">{error}</Alert>}<TextField label="Email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus /><PasswordField label="Password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /><Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Signing in securely…' : 'Sign in'}</Button><Typography variant="body2" sx={{ textAlign: 'center' }}>New resident? <Link to="/register">Create an account</Link></Typography>{demoEmails.length > 0 && <Alert severity="info">Local development demo accounts: {demoEmails.join(', ')}. Use the password configured in your local environment.</Alert>}</Stack></AuthLayout>
 }
 
 export function RegisterPage() {
-  const { register } = useAuth(); const navigate = useNavigate()
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(''); try { await register(form); navigate('/requests') } catch (e) { setError(e instanceof Error ? e.message : 'Registration failed') } finally { setBusy(false) } }
-  return <AuthCard title="Create resident account" subtitle="Submit and track community service requests."><Stack component="form" spacing={2} onSubmit={submit}>
-    {error && <Alert severity="error">{error}</Alert>}<Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}><TextField label="First name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} required /><TextField label="Last name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} required /></Stack>
-    <TextField label="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /><TextField label="Password" type="password" helperText="At least 10 characters with upper/lowercase, number and symbol" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required />
-    <Button type="submit" variant="contained" size="large" disabled={busy}>Create account</Button><Typography variant="body2" sx={{ textAlign: 'center' }}>Already registered? <Link to="/login">Sign in</Link></Typography>
-  </Stack></AuthCard>
+  const { register } = useAuth(); const navigate = useNavigate(); const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (busy) return; setBusy(true); setError(''); try { await register(form); navigate('/requests') } catch (e) { setError(e instanceof Error ? e.message : 'Registration failed') } finally { setBusy(false) } }
+  return <AuthLayout title="Create your resident account" subtitle="Submit community service requests and keep every public update together."><Stack component="form" spacing={4} onSubmit={submit} aria-busy={busy}>{busy && <LinearProgress aria-label="Creating account" />}{error && <Alert severity="error" role="alert" aria-live="assertive">{error}</Alert>}<Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}><TextField fullWidth label="First name" autoComplete="given-name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} required /><TextField fullWidth label="Last name" autoComplete="family-name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} required /></Stack><TextField label="Email" type="email" autoComplete="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /><PasswordField label="Create password" autoComplete="new-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required helperText="Use at least 10 characters, including uppercase, lowercase, a number and a symbol." /><Box component="ul" sx={{ m: 0, pl: 6, color: 'text.secondary' }}><li>At least 10 characters</li><li>Uppercase and lowercase letters</li><li>At least one number and one symbol</li></Box><Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Creating your account…' : 'Create account'}</Button><Typography variant="body2" sx={{ textAlign: 'center' }}>Already registered? <Link to="/login">Sign in</Link></Typography></Stack></AuthLayout>
 }
 
-function AuthCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return <Paper sx={{ maxWidth: 520, mx: 'auto', p: { xs: 3, sm: 5 } }}><Typography variant="h4" sx={{ fontWeight: 850 }}>{title}</Typography><Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>{subtitle}</Typography>{children}</Paper>
+function AuthLayout({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+  return <Box sx={{ minHeight: { xs: 'calc(100dvh - 56px - 48px)', sm: 'calc(100dvh - 64px - 48px)', md: 'calc(100dvh - 64px - 80px)' }, display: 'flex', alignItems: 'center', py: { xs: 2, md: 4 } }}><Grid container sx={{ width: '100%', maxWidth: 1080, mx: 'auto', alignItems: 'stretch' }}><Grid size={{ xs: 12, md: 5 }} sx={{ display: { xs: 'none', md: 'flex' } }}><Paper sx={{ width: '100%', p: 9, bgcolor: 'primary.dark', color: 'primary.contrastText', border: 0, borderRadius: '12px 0 0 12px' }}><LockRoundedIcon sx={{ fontSize: 46 }} /><Typography component="h2" variant="h3" sx={{ mt: 5 }}>Your service history, protected.</Typography><Typography sx={{ mt: 4, color: 'rgba(255,255,255,.82)' }}>CivicFlow keeps the public conversation, attachments and progress for each request in one secure account.</Typography><Stack spacing={3} sx={{ mt: 8 }}>{['Role-protected information', 'Clear progress milestones', 'Secure attachment access'].map(item => <Stack direction="row" spacing={2} key={item}><CheckCircleRoundedIcon fontSize="small" /><Typography>{item}</Typography></Stack>)}</Stack></Paper></Grid><Grid size={{ xs: 12, md: 7 }}><Paper sx={{ height: '100%', p: { xs: 5, sm: 8, md: 10 }, borderRadius: { md: '0 12px 12px 0' } }}><Typography component="h1" variant="h3">{title}</Typography><Typography color="text.secondary" sx={{ mt: 2, mb: 7, maxWidth: 560 }}>{subtitle}</Typography>{children}</Paper></Grid></Grid></Box>
 }
+
+function safeReturnUrl(value: string | null) { return value && /^\/(requests(?:\/new)?|cases|dashboard|admin)$/.test(value) ? value : '/home' }

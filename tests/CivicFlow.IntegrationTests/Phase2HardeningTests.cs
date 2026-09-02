@@ -4,8 +4,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CivicFlow.Api.Common;
 using CivicFlow.Domain.Entities;
+using CivicFlow.Infrastructure.Identity;
 using CivicFlow.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CivicFlow.IntegrationTests;
@@ -13,6 +15,55 @@ namespace CivicFlow.IntegrationTests;
 public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixture<CivicFlowFactory>
 {
     private readonly HttpClient client = factory.CreateClient();
+
+    [Fact]
+    public async Task ResidentCaseProjection_ExcludesStaffIdentityPriorityAuditAndSlaManagementFields()
+    {
+        var resident = await Login("resident"); Auth(resident.Token);
+        var category = (await Json("/api/categories")).EnumerateArray().First();
+        Assert.False(category.TryGetProperty("firstResponseHours", out _));
+        Assert.False(category.TryGetProperty("resolutionHours", out _));
+        Assert.False(category.TryGetProperty("isActive", out _));
+        var created = await client.PostAsJsonAsync("/api/cases", new { categoryId = category.GetProperty("id").GetGuid(), title = "Resident projection boundary", description = "A request used to verify strict resident response projection.", address = "10 Projection Street" });
+        created.EnsureSuccessStatusCode(); var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var listItem = (await Json("/api/cases")).GetProperty("items").EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == id);
+        var detail = await Json($"/api/cases/{id}"); var caseItem = detail.GetProperty("case");
+        foreach (var property in new[] { "priority", "assignedOfficerId", "assignedOfficerName", "serviceCategoryId", "updatedAtUtc", "nextSlaDueAtUtc", "nextSlaTarget" })
+        {
+            Assert.False(listItem.TryGetProperty(property, out _), property);
+            Assert.False(caseItem.TryGetProperty(property, out _), property);
+        }
+        Assert.False(detail.TryGetProperty("assignedOfficer", out _));
+        Assert.All(detail.GetProperty("activities").EnumerateArray(), activity =>
+            Assert.DoesNotContain(activity.GetProperty("type").GetString(), new[] { "PriorityChanged", "SlaChanged", "InternalNote" }));
+    }
+
+    [Fact]
+    public async Task UnknownAuthenticatedRole_FailsClosedForCaseAndAttachmentApis()
+    {
+        var email = $"unknown-role-{Guid.NewGuid():N}@example.local";
+        var registration = await client.PostAsJsonAsync("/api/auth/register", new { email, password = TestCredentials.Password, firstName = "Unknown", lastName = "Role" });
+        registration.EnsureSuccessStatusCode();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var user = await db.Users.SingleAsync(x => x.Email == email);
+            var residentRole = await db.Roles.SingleAsync(x => x.Name == CivicFlowRoles.Resident);
+            var roleName = $"UnexpectedRole-{Guid.NewGuid():N}";
+            var unknownRole = new IdentityRole<Guid>(roleName) { Id = Guid.NewGuid(), NormalizedName = roleName.ToUpperInvariant() };
+            db.Roles.Add(unknownRole);
+            db.UserRoles.Remove(await db.UserRoles.SingleAsync(x => x.UserId == user.Id && x.RoleId == residentRole.Id));
+            db.UserRoles.Add(new IdentityUserRole<Guid> { UserId = user.Id, RoleId = unknownRole.Id });
+            await db.SaveChangesAsync();
+        }
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = TestCredentials.Password }); login.EnsureSuccessStatusCode();
+        Auth((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/cases")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/cases/{Guid.NewGuid()}/attachments")).StatusCode);
+        var categories = await Json("/api/categories?includeInactive=true");
+        Assert.All(categories.EnumerateArray(), category => Assert.False(category.TryGetProperty("firstResponseHours", out _)));
+    }
 
     [Fact]
     public void SlaStates_TrackFirstResponseAndUseTheMostSevereIncompleteTarget()
@@ -164,7 +215,11 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
         var initial = (await Json(path)).GetProperty("case");
         var submitted = initial.GetProperty("submittedAtUtc").GetDateTimeOffset();
         var due = initial.GetProperty("resolutionDueAtUtc").GetDateTimeOffset();
-        Assert.Equal(submitted.AddHours(category.GetProperty("resolutionHours").GetInt32()), due);
+        await using var categoryScope = factory.Services.CreateAsyncScope();
+        var categoryId = category.GetProperty("id").GetGuid();
+        var resolutionHours = await categoryScope.ServiceProvider.GetRequiredService<ApplicationDbContext>().ServiceCategories
+            .Where(x => x.Id == categoryId).Select(x => x.ResolutionHours).SingleAsync();
+        Assert.Equal(submitted.AddHours(resolutionHours), due);
         Assert.Equal("Submitted", initial.GetProperty("status").GetString());
         Auth(manager.Token);
         await Post(path + "/triage", new { priority = "Critical" });

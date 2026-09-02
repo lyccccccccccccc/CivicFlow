@@ -1,27 +1,30 @@
 import { Box, Button, Chip, Grid, Paper, Stack, Typography } from '@mui/material'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import ForumRoundedIcon from '@mui/icons-material/ForumRounded'
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
+import SendRoundedIcon from '@mui/icons-material/SendRounded'
+import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 
-const points = ['Transparent case tracking', 'SLA-driven service teams', 'Secure role-based access', 'Complete activity history']
+const values = [
+  { icon: <SendRoundedIcon />, title: 'Submit', text: 'Give the service team the details, location and supporting files they need.', path: '/requests/new', action: 'Submit a request' },
+  { icon: <SearchRoundedIcon />, title: 'Track', text: 'Follow each meaningful milestone from submission through resolution.', path: '/requests', action: 'View my requests' },
+  { icon: <ForumRoundedIcon />, title: 'Communicate', text: 'Select a request to reply securely to the service team.', path: '/requests', action: 'Choose a request to reply' },
+]
+const steps = ['Create your request', 'The service team reviews and assigns it', 'Track progress and respond', 'Review the resolution']
 
 export function LandingPage() {
-  return <Grid container spacing={6} sx={{ py: { xs: 4, md: 10 }, alignItems: 'center' }}>
-    <Grid size={{ xs: 12, md: 7 }}><Stack spacing={3}>
-      <Chip label="COMMUNITY SERVICE REQUESTS" color="secondary" sx={{ alignSelf: 'flex-start', fontWeight: 800 }} />
-      <Typography variant="h1" sx={{ fontSize: { xs: 48, md: 72 }, lineHeight: 1.02 }}>Clear requests.<br />Accountable outcomes.</Typography>
-      <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 680, lineHeight: 1.6 }}>Report local issues, follow every update, and help service teams deliver timely community outcomes.</Typography>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <Button component={Link} to="/register" variant="contained" size="large" endIcon={<ArrowForwardRoundedIcon />}>Submit a request</Button>
-        <Button component={Link} to="/login" variant="outlined" size="large">Track an existing request</Button>
-      </Stack>
+  const { user } = useAuth(); const roleHome = user?.roles.includes('SystemAdministrator') ? ['/admin', 'Open administration'] : user?.roles.includes('TeamManager') ? ['/dashboard', 'Open dashboard'] : user?.roles.includes('CaseOfficer') ? ['/cases', 'Open case queue'] : ['/requests', 'View my requests']; const resident = user?.roles.includes('Resident')
+  return <Stack spacing={{ xs: 12, md: 18 }} sx={{ py: { xs: 5, md: 12 } }}>
+    <Grid container spacing={{ xs: 8, md: 12 }} sx={{ alignItems: 'center' }}><Grid size={{ xs: 12, md: 7 }}><Stack spacing={5}>
+      <Chip label="COMMUNITY SERVICE REQUESTS" color="secondary" sx={{ alignSelf: 'flex-start', fontWeight: 850 }} />
+      <Box><Typography component="h1" variant="h1" sx={{ maxWidth: 820 }}>A clearer way to request local services.</Typography><Typography component="p" variant="h6" color="text.secondary" sx={{ maxWidth: 680, mt: 4, lineHeight: 1.65 }}>Report an issue once, understand what happens next, and keep every public update in one secure place.</Typography></Box>
+      {user ? <Button component={Link} to={roleHome[0]} variant="contained" size="large" endIcon={<ArrowForwardRoundedIcon />} sx={{ alignSelf: { sm: 'flex-start' } }}>{roleHome[1]}</Button> : <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}><Button component={Link} to="/register" variant="contained" size="large" endIcon={<ArrowForwardRoundedIcon />}>Create an account</Button><Button component={Link} to="/login" variant="outlined" size="large">Sign in to track a request</Button></Stack>}
       <Typography variant="caption" color="text.secondary">Independent portfolio prototype. Not affiliated with any government organisation.</Typography>
-    </Stack></Grid>
-    <Grid size={{ xs: 12, md: 5 }}><Paper sx={{ p: 4, borderTop: '6px solid', borderColor: 'secondary.main' }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }} gutterBottom>Built for trustworthy service</Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>One shared view from initial report to verified resolution.</Typography>
-      <Stack spacing={2}>{points.map(point => <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }} key={point}><CheckCircleRoundedIcon color="primary" /><Typography>{point}</Typography></Stack>)}</Stack>
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'primary.50', borderRadius: 2 }}><Typography variant="body2"><strong>Accessible by design</strong><br />Keyboard-friendly controls, readable contrast and responsive layouts.</Typography></Box>
-    </Paper></Grid>
-  </Grid>
+    </Stack></Grid><Grid size={{ xs: 12, md: 5 }}><Paper sx={{ p: { xs: 5, md: 7 }, bgcolor: 'primary.dark', color: 'primary.contrastText', border: 0 }}><ShieldRoundedIcon sx={{ fontSize: 42 }} /><Typography component="h2" variant="h4" sx={{ mt: 4 }}>Designed for accountable service</Typography><Typography sx={{ mt: 3, color: 'rgba(255,255,255,.82)' }}>Your request is protected by role-based access. Residents see the public conversation and service progress, while internal operational notes remain private.</Typography><Stack spacing={2.5} sx={{ mt: 6 }}>{['Secure access', 'Transparent milestones', 'Auditable decisions', 'Accessible on any device'].map(point => <Stack direction="row" spacing={2} key={point}><CheckCircleRoundedIcon fontSize="small" /><Typography>{point}</Typography></Stack>)}</Stack></Paper></Grid></Grid>
+    <Box component="section" aria-labelledby="landing-value-title"><Typography id="landing-value-title" component="h2" variant="h3" sx={{ maxWidth: 720 }}>Everything residents need to stay informed</Typography><Grid container spacing={5} sx={{ mt: 4 }}>{values.map(value => { const destination = resident ? value.path : user ? roleHome[0] : `/login?returnUrl=${encodeURIComponent(value.path)}`; return <Grid size={{ xs: 12, md: 4 }} key={value.title}><Paper component={Link} to={destination} aria-label={`${value.title}: ${value.action}`} sx={{ display: 'flex', flexDirection: 'column', height: '100%', p: 6, color: 'inherit', textDecoration: 'none', transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: 4, borderColor: 'primary.main' }, '&:focus-visible': { outline: '3px solid', outlineColor: 'primary.main', outlineOffset: 3 } }}><Box sx={{ color: 'primary.main' }}>{value.icon}</Box><Typography component="h3" variant="h5" sx={{ mt: 3 }}>{value.title}</Typography><Typography color="text.secondary" sx={{ mt: 2 }}>{value.text}</Typography><Stack direction="row" spacing={1} sx={{ mt: 'auto', pt: 4, alignItems: 'center', color: 'primary.main', fontWeight: 800 }}><span>{user && !resident ? roleHome[1] : value.action}</span><ArrowForwardRoundedIcon fontSize="small" /></Stack></Paper></Grid> })}</Grid></Box>
+    <Paper component="section" aria-labelledby="landing-process-title" sx={{ p: { xs: 6, md: 10 } }}><Typography id="landing-process-title" component="h2" variant="h3">How it works</Typography><Grid container spacing={5} sx={{ mt: 4 }}>{steps.map((step, index) => <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={step}><Typography variant="overline" color="primary.main" sx={{ fontWeight: 850 }}>STEP {index + 1}</Typography><Typography component="h3" variant="h6" sx={{ mt: 1 }}>{step}</Typography></Grid>)}</Grid></Paper>
+  </Stack>
 }

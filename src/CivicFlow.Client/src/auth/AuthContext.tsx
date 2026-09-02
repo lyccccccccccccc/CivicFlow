@@ -7,6 +7,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>
   register: (input: { email: string; password: string; firstName: string; lastName: string }) => Promise<void>
   logout: () => void
+  updateUser: (user: User) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -23,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login: async (email, password) => save(await authApi.login(email, password)),
     register: async (input) => save(await authApi.register(input)),
     logout: () => { localStorage.removeItem('civicflow.auth'); setAuth(null) },
+    updateUser: (user) => { if (auth) save({ ...auth, user }) },
   }), [auth])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

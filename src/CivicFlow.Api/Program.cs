@@ -10,6 +10,16 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Some container platforms inject PORT at runtime. Bind explicitly to every
+// interface while retaining ASPNETCORE_HTTP_PORTS/launchSettings behaviour.
+var platformPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(platformPort))
+{
+    if (!int.TryParse(platformPort, out var parsedPort) || parsedPort is < 1 or > 65535)
+        throw new InvalidOperationException("PORT must be a valid TCP port number.");
+    builder.WebHost.UseUrls($"http://0.0.0.0:{parsedPort}");
+}
+
 // The Windows Event Log provider requires elevated source access and can mask the
 // original request exception in local/non-service hosting. Structured console/debug
 // providers work consistently in containers, developer terminals and CI.
@@ -48,12 +58,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+var configuredClientOrigin = builder.Configuration["ClientOrigin"];
+if (string.IsNullOrWhiteSpace(configuredClientOrigin))
+{
+    if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
+        throw new InvalidOperationException("ClientOrigin must be configured outside local development and testing.");
+    configuredClientOrigin = "http://localhost:5173";
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Client", policy =>
     {
         policy
-            .WithOrigins(builder.Configuration["ClientOrigin"] ?? "http://localhost:5173")
+            .WithOrigins(configuredClientOrigin)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });

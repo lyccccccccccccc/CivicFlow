@@ -1,24 +1,23 @@
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
+import { lazy, type ReactNode } from 'react'
+import { CssBaseline, ThemeProvider } from '@mui/material'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { AppShell } from './components/AppShell'
+import { LazyRouteBoundary } from './components/LazyRouteBoundary'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { LoginPage, RegisterPage } from './pages/AuthPages'
-import { CaseDetailPage } from './pages/CaseDetailPage'
-import { CasesPage } from './pages/CasesPage'
-import { DashboardPage } from './pages/DashboardPage'
-import { LandingPage } from './pages/LandingPage'
-import { NewRequestPage } from './pages/NewRequestPage'
-import { AdminPage } from './pages/AdminPage'
-import { AuditLogPage } from './pages/AuditLogPage'
-import { NotificationsPage } from './pages/NotificationsPage'
+import { civicTheme } from './theme'
 
-const theme = createTheme({
-  palette: { mode: 'light', primary: { main: '#075985', dark: '#0c4a6e' }, secondary: { main: '#d97706' }, background: { default: '#f3f6f8', paper: '#fff' } },
-  typography: { fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', h1: { fontWeight: 850, letterSpacing: '-.045em' }, h3: { fontWeight: 800, letterSpacing: '-.025em' } },
-  shape: { borderRadius: 12 },
-  components: { MuiButton: { styleOverrides: { root: { textTransform: 'none', fontWeight: 750, borderRadius: 8 } } }, MuiPaper: { defaultProps: { elevation: 0 }, styleOverrides: { root: { border: '1px solid #dbe3e8' } } }, MuiTableHead: { styleOverrides: { root: { background: '#eef3f6' } } } },
-})
+const LandingPage = lazy(() => import('./pages/LandingPage').then(module => ({ default: module.LandingPage })))
+const LoginPage = lazy(() => import('./pages/AuthPages').then(module => ({ default: module.LoginPage })))
+const RegisterPage = lazy(() => import('./pages/AuthPages').then(module => ({ default: module.RegisterPage })))
+const CasesPage = lazy(() => import('./pages/CasesPage').then(module => ({ default: module.CasesPage })))
+const CaseDetailPage = lazy(() => import('./pages/CaseDetailPage').then(module => ({ default: module.CaseDetailPage })))
+const NewRequestPage = lazy(() => import('./pages/NewRequestPage').then(module => ({ default: module.NewRequestPage })))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(module => ({ default: module.NotificationsPage })))
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(module => ({ default: module.DashboardPage })))
+const AdminPage = lazy(() => import('./pages/AdminPage').then(module => ({ default: module.AdminPage })))
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then(module => ({ default: module.AuditLogPage })))
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then(module => ({ default: module.ProfilePage })))
 
 function HomeRedirect() {
   const { user } = useAuth()
@@ -26,13 +25,15 @@ function HomeRedirect() {
   return <Navigate to={user.roles.includes('Resident') ? '/requests' : '/cases'} replace />
 }
 
+const lazyPage = (page: ReactNode) => <LazyRouteBoundary>{page}</LazyRouteBoundary>
+
 export default function App() {
-  return <ThemeProvider theme={theme}><CssBaseline /><BrowserRouter><AuthProvider><Routes>
-    <Route element={<AppShell />}><Route index element={<LandingPage />} /><Route path="login" element={<LoginPage />} /><Route path="register" element={<RegisterPage />} />
-      <Route element={<ProtectedRoute />}><Route path="home" element={<HomeRedirect />} /><Route path="requests" element={<CasesPage />} /><Route path="cases/:id" element={<CaseDetailPage />} /><Route path="requests/new" element={<NewRequestPage />} /><Route path="notifications" element={<NotificationsPage />} /></Route>
-      <Route element={<ProtectedRoute staff />}><Route path="cases" element={<CasesPage />} /><Route path="dashboard" element={<DashboardPage />} /></Route>
-      <Route element={<ProtectedRoute role="SystemAdministrator" />}><Route path="admin" element={<AdminPage />} /></Route>
-      <Route element={<ProtectedRoute managers />}><Route path="admin/audit-log" element={<AuditLogPage />} /></Route>
+  return <ThemeProvider theme={civicTheme}><CssBaseline /><BrowserRouter><AuthProvider><Routes>
+    <Route element={<AppShell />}><Route index element={lazyPage(<LandingPage />)} /><Route path="login" element={lazyPage(<LoginPage />)} /><Route path="register" element={lazyPage(<RegisterPage />)} />
+      <Route element={<ProtectedRoute />}><Route path="home" element={<HomeRedirect />} /><Route path="profile" element={lazyPage(<ProfilePage />)} /><Route path="requests" element={lazyPage(<CasesPage />)} /><Route path="cases/:id" element={lazyPage(<CaseDetailPage />)} /><Route path="requests/new" element={lazyPage(<NewRequestPage />)} /><Route path="notifications" element={lazyPage(<NotificationsPage />)} /></Route>
+      <Route element={<ProtectedRoute staff />}><Route path="cases" element={lazyPage(<CasesPage />)} /><Route path="dashboard" element={lazyPage(<DashboardPage />)} /></Route>
+      <Route element={<ProtectedRoute role="SystemAdministrator" />}><Route path="admin" element={lazyPage(<AdminPage />)} /></Route>
+      <Route element={<ProtectedRoute managers />}><Route path="admin/audit-log" element={lazyPage(<AuditLogPage />)} /></Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   </Routes></AuthProvider></BrowserRouter></ThemeProvider>

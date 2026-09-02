@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -35,10 +38,32 @@ public static class DatabaseStartup
             if (db.Database.IsSqlServer()) await SeedWithLockAsync(db, scope.ServiceProvider, cancellationToken);
             else await DatabaseSeeder.SeedDevelopmentAsync(scope.ServiceProvider);
         }
+        else if (scope.ServiceProvider.GetRequiredService<IConfiguration>()
+                     .GetValue<bool>("DatabaseInitialization:SeedReferenceData"))
+        {
+            // Explicit opt-in for an empty staging/demo environment. Production
+            // remains fail-closed because the setting is absent/false by default.
+            if (db.Database.IsSqlServer()) await SeedWithLockAsync(db, scope.ServiceProvider, cancellationToken);
+            else await DatabaseSeeder.SeedDevelopmentAsync(scope.ServiceProvider);
+        }
     }
 
     private static async Task MigrateWithLockAsync(ApplicationDbContext db, CancellationToken cancellationToken)
     {
+        var creator = db.GetService<IRelationalDatabaseCreator>();
+        if (!await creator.ExistsAsync(cancellationToken))
+        {
+            try
+            {
+                await creator.CreateAsync(cancellationToken);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException exception) when (exception.Number == 1801)
+            {
+                // Another replica created the empty database first. Both replicas
+                // continue through the target-database migration lock below.
+            }
+        }
+
         await db.Database.OpenConnectionAsync(cancellationToken);
         try
         {

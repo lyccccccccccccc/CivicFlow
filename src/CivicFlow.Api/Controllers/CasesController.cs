@@ -16,14 +16,17 @@ namespace CivicFlow.Api.Controllers;
 public sealed class CasesController(ApplicationDbContext db, UserManager<ApplicationUser> users) : ControllerBase
 {
     private const string Managers = CivicFlowRoles.TeamManager + "," + CivicFlowRoles.SystemAdministrator;
+    private const string KnownRoles = CivicFlowRoles.Resident + "," + CivicFlowRoles.CaseOfficer + "," + Managers;
 
     [HttpGet("categories")]
     [AllowAnonymous]
     public async Task<IActionResult> Categories([FromQuery] bool includeInactive = false)
     {
-        var canSeeInactive = includeInactive && User.Identity is { IsAuthenticated: true } && !User.IsInRole(CivicFlowRoles.Resident);
-        return Ok(await db.ServiceCategories.AsNoTracking().Where(x => x.IsActive || canSeeInactive).OrderBy(x => x.Name)
-            .Select(x => new { x.Id, x.Name, x.Description, x.FirstResponseHours, x.ResolutionHours, x.IsActive }).ToListAsync());
+        var staff = IsStaff();
+        var canSeeInactive = includeInactive && staff;
+        var query = db.ServiceCategories.AsNoTracking().Where(x => x.IsActive || canSeeInactive).OrderBy(x => x.Name);
+        if (!staff) return Ok(await query.Select(x => new { x.Id, x.Name, x.Description }).ToListAsync());
+        return Ok(await query.Select(x => new { x.Id, x.Name, x.Description, x.FirstResponseHours, x.ResolutionHours, x.IsActive }).ToListAsync());
     }
 
     [HttpPost("cases")]
@@ -52,9 +55,10 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpGet("cases")]
-    [Authorize]
+    [Authorize(Roles = KnownRoles)]
     public async Task<IActionResult> List([FromQuery] CaseListQuery request)
     {
+        if (!IsKnownRole()) return Forbid();
         var now = DateTimeOffset.UtcNow;
         var query = db.ServiceRequests.AsNoTracking().AsQueryable();
         if (User.IsInRole(CivicFlowRoles.Resident)) query = query.Where(x => x.ResidentId == User.UserId());
@@ -74,15 +78,21 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
                 AssignedOfficerName = db.Users.Where(u => u.Id == x.AssignedOfficerId)
                     .Select(u => u.FirstName + " " + u.LastName).FirstOrDefault()
             }).ToListAsync();
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+        if (User.IsInRole(CivicFlowRoles.Resident))
+        {
+            var residentItems = rows.Select(x => ResidentCaseListItem.From(x.Item, x.CategoryName, now)).ToList();
+            return Ok(new PagedResponse<ResidentCaseListItem>(residentItems, page, pageSize, totalCount, totalPages));
+        }
         var items = rows.Select(x => CaseListItem.From(x.Item, x.CategoryName, x.AssignedOfficerName, now)).ToList();
-        return Ok(new PagedResponse<CaseListItem>(items, page, pageSize, totalCount,
-            (int)Math.Ceiling(totalCount / (double)pageSize)));
+        return Ok(new PagedResponse<CaseListItem>(items, page, pageSize, totalCount, totalPages));
     }
 
     [HttpGet("cases/{id:guid}")]
-    [Authorize]
+    [Authorize(Roles = KnownRoles)]
     public async Task<IActionResult> Get(Guid id)
     {
+        if (!IsKnownRole()) return NotFound();
         var item = await db.ServiceRequests.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
         if (item is null) return NotFound();
         if (User.IsInRole(CivicFlowRoles.Resident) && item.ResidentId != User.UserId()) return NotFound();
@@ -96,12 +106,19 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
             .Where(x => x.ServiceRequestId == id && (!User.IsInRole(CivicFlowRoles.Resident) || x.IsPublic))
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync();
+        var projectedActivities = ActivityFeed.Project(activities, User.IsInRole(CivicFlowRoles.Resident), item.ResidentId);
+        if (User.IsInRole(CivicFlowRoles.Resident)) return Ok(new
+        {
+            Case = ResidentCaseDetail.From(item, category.Name, DateTimeOffset.UtcNow),
+            Category = new { category.Id, category.Name },
+            Activities = projectedActivities
+        });
         return Ok(new
         {
             Case = CaseListItem.From(item, category.Name, officer?.Name, DateTimeOffset.UtcNow, true),
             Category = new { category.Id, category.Name, category.FirstResponseHours, category.ResolutionHours },
             AssignedOfficer = officer,
-            Activities = ActivityFeed.Project(activities, User.IsInRole(CivicFlowRoles.Resident), item.ResidentId)
+            Activities = projectedActivities
         });
     }
 
@@ -155,9 +172,10 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpPost("cases/{id:guid}/status")]
-    [Authorize]
+    [Authorize(Roles = KnownRoles)]
     public async Task<IActionResult> ChangeStatus(Guid id, ChangeStatusRequest request)
     {
+        if (!IsKnownRole()) return Forbid();
         var item = await db.ServiceRequests.FindAsync(id);
         if (item is null) return NotFound();
         var resident = User.IsInRole(CivicFlowRoles.Resident);
@@ -194,9 +212,10 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
     }
 
     [HttpPost("cases/{id:guid}/comments")]
-    [Authorize]
+    [Authorize(Roles = KnownRoles)]
     public async Task<IActionResult> AddComment(Guid id, CommentRequest request)
     {
+        if (!IsKnownRole()) return Forbid();
         var item = await db.ServiceRequests.FindAsync(id);
         if (item is null) return NotFound();
         if (User.IsInRole(CivicFlowRoles.Resident) && item.ResidentId != User.UserId()) return Forbid();
@@ -298,6 +317,9 @@ public sealed class CasesController(ApplicationDbContext db, UserManager<Applica
         if (recipient == User.UserId()) return;
         db.UserNotifications.Add(new(recipient, item.Id, title, message.Length > 1000 ? message[..997] + "..." : message, DateTimeOffset.UtcNow, activity.Id.ToString()));
     }
+
+    private bool IsStaff() => User.IsInRole(CivicFlowRoles.CaseOfficer) || User.IsInRole(CivicFlowRoles.TeamManager) || User.IsInRole(CivicFlowRoles.SystemAdministrator);
+    private bool IsKnownRole() => User.IsInRole(CivicFlowRoles.Resident) || IsStaff();
 }
 
 public sealed class CaseListQuery : CaseFilterParameters
@@ -335,4 +357,28 @@ public sealed record CaseListItem(
         SlaCalculator.FirstResponseState(item, now), SlaCalculator.ResolutionState(item, now),
         CaseQuery.SlaState(item, now), SlaCalculator.NextDue(item), SlaCalculator.NextTarget(item),
         includeDetails ? item.Latitude : null, includeDetails ? item.Longitude : null);
+}
+
+public sealed record ResidentCaseListItem(Guid Id, string ReferenceNumber, string Title, string CategoryName,
+    string Status, DateTimeOffset SubmittedAtUtc, DateTimeOffset? FirstResponseDueAtUtc,
+    DateTimeOffset? FirstResponseCompletedAtUtc, DateTimeOffset? ResolutionDueAtUtc,
+    string FirstResponseSlaState, string ResolutionSlaState, string SlaState)
+{
+    public static ResidentCaseListItem From(ServiceRequest item, string categoryName, DateTimeOffset now) =>
+        new(item.Id, item.ReferenceNumber, item.Title, categoryName, item.Status.ToString(), item.SubmittedAtUtc,
+            item.FirstResponseDueAtUtc, item.FirstResponseCompletedAtUtc, item.ResolutionDueAtUtc,
+            SlaCalculator.FirstResponseState(item, now), SlaCalculator.ResolutionState(item, now), CaseQuery.SlaState(item, now));
+}
+
+public sealed record ResidentCaseDetail(Guid Id, string ReferenceNumber, string Title, string Description,
+    string Address, string CategoryName, string Status, DateTimeOffset SubmittedAtUtc,
+    DateTimeOffset? FirstResponseDueAtUtc, DateTimeOffset? FirstResponseCompletedAtUtc,
+    DateTimeOffset? ResolutionDueAtUtc, string FirstResponseSlaState, string ResolutionSlaState,
+    string SlaState, decimal? Latitude, decimal? Longitude)
+{
+    public static ResidentCaseDetail From(ServiceRequest item, string categoryName, DateTimeOffset now) =>
+        new(item.Id, item.ReferenceNumber, item.Title, item.Description, item.Address, categoryName,
+            item.Status.ToString(), item.SubmittedAtUtc, item.FirstResponseDueAtUtc,
+            item.FirstResponseCompletedAtUtc, item.ResolutionDueAtUtc, SlaCalculator.FirstResponseState(item, now),
+            SlaCalculator.ResolutionState(item, now), CaseQuery.SlaState(item, now), item.Latitude, item.Longitude);
 }

@@ -57,6 +57,7 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
         if (id == User.UserId() && !request.IsActive) return BadRequest(new { message = "You cannot disable your own account." });
         var user = await users.FindByIdAsync(id.ToString());
         if (user is null) return NotFound();
+        if (user.IsActive == request.IsActive) return NoContent();
         user.IsActive = request.IsActive;
         var result = await users.UpdateAsync(user);
         if (!result.Succeeded) return BadRequest(result.Errors);
@@ -88,6 +89,8 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     {
         var item = await db.ServiceCategories.FindAsync(id);
         if (item is null) return NotFound();
+        if (item.Name == request.Name.Trim() && item.Description == request.Description.Trim() &&
+            item.FirstResponseHours == request.FirstResponseHours && item.ResolutionHours == request.ResolutionHours) return NoContent();
         if (await db.ServiceCategories.AnyAsync(x => x.Id != id && x.Name == request.Name.Trim()))
             return Conflict(new { message = "A category with that name already exists." });
         var before = $"{item.Name} ({item.FirstResponseHours}/{item.ResolutionHours}h)";
@@ -103,6 +106,7 @@ public sealed class AdminController(ApplicationDbContext db, UserManager<Applica
     {
         var item = await db.ServiceCategories.FindAsync(id);
         if (item is null) return NotFound();
+        if (item.IsActive == request.IsActive) return NoContent();
         item.SetActive(request.IsActive, DateTimeOffset.UtcNow);
         AddAudit("CategoryStatusChanged", $"Set category {item.Name} active state to {request.IsActive}.");
         await db.SaveChangesAsync();

@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CivicFlow.Api.Controllers;
 
-[ApiController, Authorize, Route("api/cases/{caseId:guid}/attachments")]
+[ApiController, Authorize(Roles = CivicFlowRoles.Resident + "," + CivicFlowRoles.CaseOfficer + "," + CivicFlowRoles.TeamManager + "," + CivicFlowRoles.SystemAdministrator), Route("api/cases/{caseId:guid}/attachments")]
 public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage storage, ILogger<AttachmentsController> logger) : ControllerBase
 {
     private static readonly ServiceRequestStatus[] ResidentEditableStatuses =
@@ -24,8 +24,8 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         var item = await AccessibleCase(caseId); if (item is null) return NotFound();
         var resident = User.IsInRole(CivicFlowRoles.Resident);
         var rows = await db.CaseAttachments.AsNoTracking().Where(x => x.ServiceRequestId == caseId && !x.IsDeleted && (!resident || x.Visibility == AttachmentVisibility.Public))
-            .OrderByDescending(x => x.UploadedAtUtc).Select(x => new AttachmentDto(x.Id, x.OriginalFileName, x.ContentType, x.SizeBytes, x.Visibility.ToString(), x.UploadedAtUtc, x.UploadedByUserId)).ToListAsync();
-        return Ok(rows);
+            .OrderByDescending(x => x.UploadedAtUtc).ToListAsync();
+        return Ok(rows.Select(x => ToDto(x, CanDelete(item, x))));
     }
 
     [HttpPost, RequestSizeLimit(11 * 1024 * 1024)]
@@ -91,7 +91,7 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
             db.CaseActivities.Add(activity);
             NotifyUpload(item, attachment, activity);
             await db.SaveChangesAsync(); if (transaction is not null) await transaction.CommitAsync();
-            return CreatedAtAction(nameof(List), new { caseId }, ToDto(attachment));
+            return CreatedAtAction(nameof(List), new { caseId }, ToDto(attachment, CanDelete(item, attachment)));
         }
         catch (DbUpdateException ex)
         {
@@ -131,8 +131,7 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         var item = await AccessibleCase(caseId); if (item is null) return NotFound();
         var attachment = await db.CaseAttachments.SingleOrDefaultAsync(x => x.Id == attachmentId && x.ServiceRequestId == caseId && !x.IsDeleted); if (attachment is null) return NotFound();
         if (request.Reason?.Trim().Length is not >= 10 or > 500) return BadRequest(new { message = "A deletion reason of 10–500 characters is required." });
-        if (User.IsInRole(CivicFlowRoles.Resident) && (attachment.UploadedByUserId != User.UserId() || attachment.Visibility != AttachmentVisibility.Public || !ResidentEditableStatuses.Contains(item.Status))) return NotFound();
-        if (User.IsInRole(CivicFlowRoles.CaseOfficer) && (attachment.UploadedByUserId != User.UserId() || !ResidentEditableStatuses.Contains(item.Status))) return NotFound();
+        if (!CanDelete(item, attachment)) return NotFound();
         attachment.SoftDelete(User.UserId(), request.Reason, DateTimeOffset.UtcNow);
         db.CaseActivities.Add(new CaseActivity(caseId, User.UserId(), "AttachmentSoftDeleted", $"Attachment soft deleted: {attachment.OriginalFileName}. Reason: {request.Reason.Trim()}", false, DateTimeOffset.UtcNow));
         await db.SaveChangesAsync(); return NoContent();
@@ -145,6 +144,13 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         if (User.IsInRole(CivicFlowRoles.CaseOfficer)) return item.AssignedOfficerId == User.UserId() ? item : null;
         return User.IsInRole(CivicFlowRoles.TeamManager) || User.IsInRole(CivicFlowRoles.SystemAdministrator) ? item : null;
     }
+
+    private bool CanDelete(ServiceRequest item, CaseAttachment attachment) =>
+        ResidentEditableStatuses.Contains(item.Status) &&
+        attachment.UploadedByUserId == User.UserId() &&
+        (!User.IsInRole(CivicFlowRoles.Resident) || attachment.Visibility == AttachmentVisibility.Public) &&
+        (User.IsInRole(CivicFlowRoles.Resident) || User.IsInRole(CivicFlowRoles.CaseOfficer) ||
+         User.IsInRole(CivicFlowRoles.TeamManager) || User.IsInRole(CivicFlowRoles.SystemAdministrator));
 
     private void NotifyUpload(ServiceRequest item, CaseAttachment attachment, CaseActivity activity)
     {
@@ -164,8 +170,8 @@ public sealed class AttachmentsController(ApplicationDbContext db, IFileStorage 
         }
     }
 
-    private static AttachmentDto ToDto(CaseAttachment x) => new(x.Id, x.OriginalFileName, x.ContentType, x.SizeBytes, x.Visibility.ToString(), x.UploadedAtUtc, x.UploadedByUserId);
+    private static AttachmentDto ToDto(CaseAttachment x, bool canDelete) => new(x.Id, x.OriginalFileName, x.ContentType, x.SizeBytes, x.Visibility.ToString(), x.UploadedAtUtc, canDelete);
 }
 
-public sealed record AttachmentDto(Guid Id, string OriginalFileName, string ContentType, long SizeBytes, string Visibility, DateTimeOffset UploadedAtUtc, Guid UploadedByUserId);
+public sealed record AttachmentDto(Guid Id, string OriginalFileName, string ContentType, long SizeBytes, string Visibility, DateTimeOffset UploadedAtUtc, bool CanDelete);
 public sealed record DeleteAttachmentRequest(string Reason);
