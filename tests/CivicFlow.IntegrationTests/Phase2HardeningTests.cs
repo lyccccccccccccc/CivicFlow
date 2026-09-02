@@ -4,8 +4,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CivicFlow.Api.Common;
 using CivicFlow.Domain.Entities;
+using CivicFlow.Infrastructure.Identity;
 using CivicFlow.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CivicFlow.IntegrationTests;
@@ -35,6 +37,32 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
         Assert.False(detail.TryGetProperty("assignedOfficer", out _));
         Assert.All(detail.GetProperty("activities").EnumerateArray(), activity =>
             Assert.DoesNotContain(activity.GetProperty("type").GetString(), new[] { "PriorityChanged", "SlaChanged", "InternalNote" }));
+    }
+
+    [Fact]
+    public async Task UnknownAuthenticatedRole_FailsClosedForCaseAndAttachmentApis()
+    {
+        var email = $"unknown-role-{Guid.NewGuid():N}@example.local";
+        var registration = await client.PostAsJsonAsync("/api/auth/register", new { email, password = TestCredentials.Password, firstName = "Unknown", lastName = "Role" });
+        registration.EnsureSuccessStatusCode();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var user = await db.Users.SingleAsync(x => x.Email == email);
+            var residentRole = await db.Roles.SingleAsync(x => x.Name == CivicFlowRoles.Resident);
+            var roleName = $"UnexpectedRole-{Guid.NewGuid():N}";
+            var unknownRole = new IdentityRole<Guid>(roleName) { Id = Guid.NewGuid(), NormalizedName = roleName.ToUpperInvariant() };
+            db.Roles.Add(unknownRole);
+            db.UserRoles.Remove(await db.UserRoles.SingleAsync(x => x.UserId == user.Id && x.RoleId == residentRole.Id));
+            db.UserRoles.Add(new IdentityUserRole<Guid> { UserId = user.Id, RoleId = unknownRole.Id });
+            await db.SaveChangesAsync();
+        }
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = TestCredentials.Password }); login.EnsureSuccessStatusCode();
+        Auth((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/cases")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/cases/{Guid.NewGuid()}/attachments")).StatusCode);
+        var categories = await Json("/api/categories?includeInactive=true");
+        Assert.All(categories.EnumerateArray(), category => Assert.False(category.TryGetProperty("firstResponseHours", out _)));
     }
 
     [Fact]
