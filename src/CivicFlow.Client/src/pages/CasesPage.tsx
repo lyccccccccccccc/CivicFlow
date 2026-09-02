@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TableSortLabel, TextField } from '@mui/material'
+import { Button, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TableSortLabel, TextField } from '@mui/material'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, type CaseItem, type Category, type Officer, type PagedResponse } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { EmptyState, PageHeader, PriorityChip, SlaStatus, StatusChip, TableSkeleton } from '../components/ui'
+import { EmptyState, ErrorState, PageHeader, PriorityChip, SlaStatus, StatusChip, TableSkeleton } from '../components/ui'
+import { ActiveFilterSummary, ResidentRequestCard, ResponsiveDataView } from '../components/resident'
 
 const priorities = ['Low', 'Medium', 'High', 'Critical']
 const statuses = ['Submitted', 'Triaged', 'Assigned', 'InProgress', 'WaitingForResident', 'Resolved', 'Closed', 'Reopened', 'Rejected']
@@ -49,22 +50,24 @@ export function CasesPage() {
       {!resident && <TextField size="small" type="date" label="Due to" value={params.get('dueTo')?.slice(0, 10) ?? ''} onChange={e => update('dueTo', e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />}
       <Button onClick={clear}>Clear filters</Button>
     </Stack></Paper>
-    {error && <Alert severity="error">{error}</Alert>}
-    {loading ? <Paper><TableSkeleton columns={resident ? 8 : 9} /></Paper> : <Paper sx={{ overflowX: 'auto' }} aria-busy="false"><Table size="small"><TableHead><TableRow>
+    {resident && <ActiveFilterSummary search={params.get('search') ?? undefined} status={params.get('status') ?? undefined} onClear={clear} />}
+    {error && <ErrorState title="Unable to load requests" message={error} retry={() => window.location.reload()} />}
+    {loading ? <Paper><TableSkeleton columns={resident ? 6 : 9} label={resident ? 'Loading your requests' : 'Loading cases'} /></Paper> : <><ResponsiveDataView desktop={<Paper sx={{ overflowX: 'auto' }} aria-busy="false"><Table size={resident ? 'medium' : 'small'}><TableHead><TableRow>
       <Sortable label="Reference" name="reference" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       <Sortable label="Title" name="title" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       <Sortable label="Category" name="category" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
-      <Sortable label="Priority" name="priority" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
+      {!resident && <Sortable label="Priority" name="priority" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />}
       <Sortable label="Status" name="status" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
       {!resident && <Sortable label="Assigned officer" name="officer" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />}
       <Sortable label="Submitted" name="submitted" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
-      <Sortable label="SLA due" name="due" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />
-      <TableCell>SLA state</TableCell>
+      {!resident && <Sortable label="SLA due" name="due" active={params.get('sortBy')} direction={sortDirection} onSort={sort} />}
+      <TableCell>{resident ? 'Service target' : 'SLA state'}</TableCell>
     </TableRow></TableHead><TableBody>{result?.items.map(item => <TableRow hover key={item.id} sx={{ '&:focus-within': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}>
-      <TableCell><Button component={Link} to={`/cases/${item.id}`} variant="text" size="small" sx={{ minHeight: 36, p: 1, fontWeight: 850, whiteSpace: 'nowrap' }}>{item.referenceNumber}</Button></TableCell><TableCell sx={{ minWidth: 190 }}>{item.title}</TableCell><TableCell>{item.categoryName}</TableCell><TableCell><PriorityChip priority={item.priority} /></TableCell><TableCell><StatusChip status={item.status} /></TableCell>{!resident && <TableCell>{item.assignedOfficerName ?? 'Unassigned'}</TableCell>}<TableCell>{formatDate(item.submittedAtUtc)}</TableCell><TableCell>{item.resolutionDueAtUtc ? formatDate(item.resolutionDueAtUtc) : 'Not set'}</TableCell><TableCell><SlaStatus state={item.slaState} /></TableCell>
-    </TableRow>)}{result?.items.length === 0 && <TableRow><TableCell colSpan={9}><EmptyState title="No matching cases" description="Try changing or clearing the current filters." /></TableCell></TableRow>}</TableBody></Table>
+      <TableCell><Button component={Link} to={`/cases/${item.id}`} variant="text" size="small" sx={{ minHeight: 36, p: 1, fontWeight: 850, whiteSpace: 'nowrap' }}>{item.referenceNumber}</Button></TableCell><TableCell sx={{ minWidth: 190 }}>{item.title}</TableCell><TableCell>{item.categoryName}</TableCell>{!resident && <TableCell><PriorityChip priority={item.priority} /></TableCell>}<TableCell><StatusChip status={item.status} /></TableCell>{!resident && <TableCell>{item.assignedOfficerName ?? 'Unassigned'}</TableCell>}<TableCell>{formatDate(item.submittedAtUtc)}</TableCell>{!resident && <TableCell>{item.resolutionDueAtUtc ? formatDate(item.resolutionDueAtUtc) : 'Not set'}</TableCell>}<TableCell><SlaStatus state={item.slaState} label={resident ? residentTarget(item.status, item.slaState) : undefined} /></TableCell>
+    </TableRow>)}{result?.items.length === 0 && <TableRow><TableCell colSpan={resident ? 6 : 9}><EmptyState title={resident ? 'No requests found' : 'No matching cases'} description={resident ? 'Submit a service request or change the current filters.' : 'Try changing or clearing the current filters.'} action={resident && <Button component={Link} to="/requests/new" variant="contained">Submit request</Button>} /></TableCell></TableRow>}</TableBody></Table></Paper>} mobile={<Stack spacing={4}>{result?.items.map(item => <ResidentRequestCard key={item.id} item={item} />)}{result?.items.length === 0 && <Paper><EmptyState title="No requests found" description="Submit a service request or change the current filters." action={<Button component={Link} to="/requests/new" variant="contained">Submit request</Button>} /></Paper>}</Stack>} />
+      <Paper sx={{ mt: 3 }}>
       <TablePagination component="div" count={result?.totalCount ?? 0} page={Math.max(0, page - 1)} rowsPerPage={pageSize} rowsPerPageOptions={[10, 20, 50]} onPageChange={(_, next) => update('page', String(next + 1))} onRowsPerPageChange={e => update('pageSize', e.target.value)} />
-    </Paper>}
+      </Paper></>}
   </Stack>
 }
 
@@ -73,3 +76,4 @@ function Sortable({ label, name, active, direction, onSort }: { label: string; n
 }
 const format = (value: string) => ({ WaitingForResident: 'Waiting for resident', InProgress: 'In progress', OnTrack: 'On track', AtRisk: 'At risk', NoSla: 'No SLA' }[value] ?? value)
 const formatDate = (value: string) => new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+const residentTarget = (status: string, state: string) => ['Resolved', 'Closed'].includes(status) ? 'Complete' : state === 'Overdue' ? 'Overdue' : state === 'AtRisk' ? 'Approaching' : 'On track'
