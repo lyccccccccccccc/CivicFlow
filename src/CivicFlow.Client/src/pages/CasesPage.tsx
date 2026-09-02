@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TableSortLabel, TextField } from '@mui/material'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, PageHeader, PriorityChip, SlaStatus, StatusChip
 import { ActiveFilterSummary, ResidentRequestCard, ResponsiveDataView } from '../components/resident'
 import { formatDateTime } from '../components/formatting'
 import { StaffCaseCard } from '../components/staff'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const priorities = ['Low', 'Medium', 'High', 'Critical']
 const statuses = ['Submitted', 'Triaged', 'Assigned', 'InProgress', 'WaitingForResident', 'Resolved', 'Closed', 'Reopened', 'Rejected']
@@ -16,7 +17,9 @@ const slaStates = ['OnTrack', 'AtRisk', 'Overdue', 'NoSla', 'Complete']
 export function CasesPage() {
   const { user } = useAuth(); const resident = user?.roles.includes('Resident'); const officer = user?.roles.includes('CaseOfficer')
   const canAssign = user?.roles.some(x => x === 'TeamManager' || x === 'SystemAdministrator') ?? false
-  const [params, setParams] = useSearchParams(); const queryString = params.toString()
+  const [params, setParams] = useSearchParams(); const debouncedSearch = useDebouncedValue(params.get('search') ?? '')
+  const immediateQuery = useMemo(() => { const value = new URLSearchParams(params); value.delete('search'); return value.toString() }, [params])
+  const requestSequence = useRef(0)
   const [result, setResult] = useState<PagedResponse<CaseItem> | null>(null); const [categories, setCategories] = useState<Category[]>([]); const [officers, setOfficers] = useState<Officer[]>([])
   const [loading, setLoading] = useState(true); const [error, setError] = useState('')
   const page = Number(params.get('page') ?? '1'); const pageSize = Number(params.get('pageSize') ?? '20')
@@ -27,9 +30,11 @@ export function CasesPage() {
   useEffect(() => { api<Category[]>(resident ? '/categories' : '/categories?includeInactive=true').then(setCategories) }, [resident])
   useEffect(() => { if (canAssign) api<Officer[]>('/officers').then(setOfficers) }, [canAssign])
   useEffect(() => {
-    const query = new URLSearchParams(queryString); if (!query.has('page')) query.set('page', '1'); if (!query.has('pageSize')) query.set('pageSize', '20')
-    api<PagedResponse<CaseItem>>(`/cases?${query}`).then(setResult).catch(e => setError(e instanceof Error ? e.message : 'Unable to load cases')).finally(() => setLoading(false))
-  }, [queryString])
+    const query = new URLSearchParams(immediateQuery); if (debouncedSearch) query.set('search', debouncedSearch)
+    if (!query.has('page')) query.set('page', '1'); if (!query.has('pageSize')) query.set('pageSize', '20')
+    const sequence = ++requestSequence.current
+    api<PagedResponse<CaseItem>>(`/cases?${query}`).then(data => { if (sequence === requestSequence.current) { setResult(data); setError('') } }).catch(e => { if (sequence === requestSequence.current) setError(e instanceof Error ? e.message : 'Unable to load cases') }).finally(() => { if (sequence === requestSequence.current) setLoading(false) })
+  }, [immediateQuery, debouncedSearch])
 
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value) next.set(key, value); else next.delete(key); if (key !== 'page') next.set('page', '1'); setParams(next) }
   const sort = (key: string) => { const next = new URLSearchParams(params); const current = params.get('sortBy'); const direction = current === key && params.get('sortDirection') === 'asc' ? 'desc' : 'asc'; next.set('sortBy', key); next.set('sortDirection', direction); next.set('page', '1'); setParams(next) }

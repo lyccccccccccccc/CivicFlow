@@ -20,6 +20,7 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
         var scenario = await CreateResolvedScenario();
         var residentBefore = await Snapshot(scenario.CaseId);
         Authorize(scenario.ResidentToken);
+        Assert.All((await Attachments(scenario.CaseId)).EnumerateArray(), attachment => Assert.False(attachment.GetProperty("canDelete").GetBoolean()));
         Assert.Equal(HttpStatusCode.NotFound, (await Upload(scenario.CaseId, "resident-blocked.png", "Public")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, scenario.ResidentAttachmentId)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, scenario.OfficerAttachmentId)).StatusCode);
@@ -31,6 +32,10 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
         Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, scenario.OfficerAttachmentId)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, scenario.ResidentAttachmentId)).StatusCode);
         AssertStateEqual(officerBefore, await Snapshot(scenario.CaseId));
+
+        Authorize(scenario.ManagerToken);
+        Assert.All((await Attachments(scenario.CaseId)).EnumerateArray(), attachment => Assert.False(attachment.GetProperty("canDelete").GetBoolean()));
+        Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, scenario.ManagerAttachmentId)).StatusCode);
     }
 
     [Fact]
@@ -43,11 +48,20 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
         var residentNewId = (await residentUpload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, scenario.OfficerAttachmentId)).StatusCode);
 
+        Authorize(scenario.ManagerToken);
+        Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, residentNewId)).StatusCode);
+
+        Authorize(scenario.ResidentToken);
+        var residentList = await Attachments(scenario.CaseId);
+        Assert.True(residentList.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == residentNewId).GetProperty("canDelete").GetBoolean());
+        Assert.True(residentList.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == scenario.ResidentAttachmentId).GetProperty("canDelete").GetBoolean());
+
         Authorize(scenario.OfficerToken);
-        var officerPublic = await Upload(scenario.CaseId, "officer-public.png", "Public"); Assert.Equal(HttpStatusCode.Created, officerPublic.StatusCode);
-        var officerPublicId = (await officerPublic.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         var officerInternal = await Upload(scenario.CaseId, "officer-internal.png", "Internal"); Assert.Equal(HttpStatusCode.Created, officerInternal.StatusCode);
         var officerInternalId = (await officerInternal.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var officerList = await Attachments(scenario.CaseId);
+        Assert.True(officerList.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == officerInternalId).GetProperty("canDelete").GetBoolean());
+        Assert.False(officerList.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == residentNewId).GetProperty("canDelete").GetBoolean());
         Assert.Equal(HttpStatusCode.NotFound, (await Delete(scenario.CaseId, residentNewId)).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await Delete(scenario.CaseId, officerInternalId)).StatusCode);
 
@@ -57,7 +71,6 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
         Assert.Equal(before.FirstResponseDue, after.FirstResponseDue); Assert.Equal(before.ResolutionDue, after.ResolutionDue);
         Assert.Contains("Resolved", after.ActivityTypes); Assert.Contains("Reopened", after.ActivityTypes);
         Assert.Contains(scenario.ResidentAttachmentId, after.AttachmentIds); Assert.Contains(scenario.OfficerAttachmentId, after.AttachmentIds);
-        Assert.Contains(officerPublicId, after.AttachmentIds);
     }
 
     [Fact]
@@ -88,6 +101,8 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
         var residentAttachmentId = (await residentUpload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
         var manager = await Login("manager@civicflow.local"); Authorize(manager);
+        var managerUpload = await Upload(caseId, "manager-original.png", "Internal"); managerUpload.EnsureSuccessStatusCode();
+        var managerAttachmentId = (await managerUpload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         (await client.PostAsJsonAsync($"/api/cases/{caseId}/triage", new { priority = "Medium" })).EnsureSuccessStatusCode();
         var officers = await client.GetFromJsonAsync<JsonElement>("/api/officers"); var officerId = officers.EnumerateArray().First(x => x.GetProperty("email").GetString() == "officer@civicflow.local").GetProperty("id").GetGuid();
         (await client.PostAsJsonAsync($"/api/cases/{caseId}/assign", new { officerId })).EnsureSuccessStatusCode();
@@ -97,7 +112,7 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
         var officerAttachmentId = (await officerUpload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         (await ChangeStatus(caseId, "InProgress")).EnsureSuccessStatusCode();
         (await ChangeStatus(caseId, "Resolved", "Lifecycle test resolution summary retained for audit.")).EnsureSuccessStatusCode();
-        return new(caseId, resident, officer, residentAttachmentId, officerAttachmentId);
+        return new(caseId, resident, officer, manager, residentAttachmentId, officerAttachmentId, managerAttachmentId);
     }
 
     private async Task<StateSnapshot> Snapshot(Guid caseId)
@@ -127,10 +142,11 @@ public sealed class AttachmentLifecycleAuthorizationTests(CivicFlowFactory facto
     }
     private Task<HttpResponseMessage> Delete(Guid caseId, Guid attachmentId) => client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/api/cases/{caseId}/attachments/{attachmentId}") { Content = JsonContent.Create(new { reason = "Lifecycle security verification deletion." }) });
     private Task<HttpResponseMessage> ChangeStatus(Guid caseId, string status, string? note = null) => client.PostAsJsonAsync($"/api/cases/{caseId}/status", new { status, note });
+    private Task<JsonElement> Attachments(Guid caseId) => client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/attachments");
     private async Task<string> Login(string email) { var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = TestCredentials.Password }); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!; }
     private void Authorize(string token) => client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     private static byte[] CreatePng() { using var bitmap = new SKBitmap(1, 1); bitmap.SetPixel(0, 0, SKColors.Green); using var image = SKImage.FromBitmap(bitmap); using var data = image.Encode(SKEncodedImageFormat.Png, 100); return data.ToArray(); }
 
-    private sealed record Scenario(Guid CaseId, string ResidentToken, string OfficerToken, Guid ResidentAttachmentId, Guid OfficerAttachmentId);
+    private sealed record Scenario(Guid CaseId, string ResidentToken, string OfficerToken, string ManagerToken, Guid ResidentAttachmentId, Guid OfficerAttachmentId, Guid ManagerAttachmentId);
     private sealed record StateSnapshot(Guid[] AttachmentIds, string[] AttachmentMetadata, string[] ActivityTypes, int NotificationCount, string[] BlobKeys, DateTimeOffset? FirstResponseDue, DateTimeOffset? ResolutionDue);
 }

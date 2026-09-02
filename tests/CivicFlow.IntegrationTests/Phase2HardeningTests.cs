@@ -15,6 +15,29 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
     private readonly HttpClient client = factory.CreateClient();
 
     [Fact]
+    public async Task ResidentCaseProjection_ExcludesStaffIdentityPriorityAuditAndSlaManagementFields()
+    {
+        var resident = await Login("resident"); Auth(resident.Token);
+        var category = (await Json("/api/categories")).EnumerateArray().First();
+        Assert.False(category.TryGetProperty("firstResponseHours", out _));
+        Assert.False(category.TryGetProperty("resolutionHours", out _));
+        Assert.False(category.TryGetProperty("isActive", out _));
+        var created = await client.PostAsJsonAsync("/api/cases", new { categoryId = category.GetProperty("id").GetGuid(), title = "Resident projection boundary", description = "A request used to verify strict resident response projection.", address = "10 Projection Street" });
+        created.EnsureSuccessStatusCode(); var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var listItem = (await Json("/api/cases")).GetProperty("items").EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == id);
+        var detail = await Json($"/api/cases/{id}"); var caseItem = detail.GetProperty("case");
+        foreach (var property in new[] { "priority", "assignedOfficerId", "assignedOfficerName", "serviceCategoryId", "updatedAtUtc", "nextSlaDueAtUtc", "nextSlaTarget" })
+        {
+            Assert.False(listItem.TryGetProperty(property, out _), property);
+            Assert.False(caseItem.TryGetProperty(property, out _), property);
+        }
+        Assert.False(detail.TryGetProperty("assignedOfficer", out _));
+        Assert.All(detail.GetProperty("activities").EnumerateArray(), activity =>
+            Assert.DoesNotContain(activity.GetProperty("type").GetString(), new[] { "PriorityChanged", "SlaChanged", "InternalNote" }));
+    }
+
+    [Fact]
     public void SlaStates_TrackFirstResponseAndUseTheMostSevereIncompleteTarget()
     {
         var submitted = DateTimeOffset.UtcNow.AddHours(-10);
@@ -164,7 +187,11 @@ public sealed class Phase2HardeningTests(CivicFlowFactory factory) : IClassFixtu
         var initial = (await Json(path)).GetProperty("case");
         var submitted = initial.GetProperty("submittedAtUtc").GetDateTimeOffset();
         var due = initial.GetProperty("resolutionDueAtUtc").GetDateTimeOffset();
-        Assert.Equal(submitted.AddHours(category.GetProperty("resolutionHours").GetInt32()), due);
+        await using var categoryScope = factory.Services.CreateAsyncScope();
+        var categoryId = category.GetProperty("id").GetGuid();
+        var resolutionHours = await categoryScope.ServiceProvider.GetRequiredService<ApplicationDbContext>().ServiceCategories
+            .Where(x => x.Id == categoryId).Select(x => x.ResolutionHours).SingleAsync();
+        Assert.Equal(submitted.AddHours(resolutionHours), due);
         Assert.Equal("Submitted", initial.GetProperty("status").GetString());
         Auth(manager.Token);
         await Post(path + "/triage", new { priority = "Critical" });

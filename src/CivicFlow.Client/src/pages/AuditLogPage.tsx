@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, type PagedResponse } from '../api/client'
@@ -6,14 +6,15 @@ import { AuditEventCard, auditAction, hasAuditFilters, updateAdminQuery } from '
 import { ActiveFilterSummary, ResponsiveDataView } from '../components/resident'
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../components/ui'
 import { formatDateTime } from '../components/formatting'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 type AdminUser = { id: string; firstName: string; lastName: string; email: string }
 type AuditRow = { id: string; action: string; message: string; createdAtUtc: string; serviceRequestId: string; actorId: string; userName?: string; userEmail?: string; referenceNumber?: string }
 
 export function AuditLogPage() {
-  const [params, setParams] = useSearchParams(); const query = params.toString(); const [data, setData] = useState<PagedResponse<AuditRow> | null>(null); const [users, setUsers] = useState<AdminUser[]>([]); const [error, setError] = useState('')
+  const [params, setParams] = useSearchParams(); const debouncedAction = useDebouncedValue(params.get('action') ?? ''); const debouncedCase = useDebouncedValue(params.get('case') ?? ''); const immediateQuery = useMemo(() => { const value = new URLSearchParams(params); value.delete('action'); value.delete('case'); return value.toString() }, [params]); const requestSequence = useRef(0); const [data, setData] = useState<PagedResponse<AuditRow> | null>(null); const [users, setUsers] = useState<AdminUser[]>([]); const [error, setError] = useState('')
   useEffect(() => { void api<AdminUser[]>('/admin/audit-users').then(setUsers).catch(reason => setError(reason instanceof Error ? reason.message : 'Unable to load actors')) }, [])
-  const load = useCallback(() => api<PagedResponse<AuditRow>>(`/admin/audit-logs${query ? `?${query}` : ''}`).then(setData).catch(reason => setError(reason instanceof Error ? reason.message : 'Unable to load audit log')), [query])
+  const load = useCallback(() => { const query = new URLSearchParams(immediateQuery); if (debouncedAction) query.set('action', debouncedAction); if (debouncedCase) query.set('case', debouncedCase); const sequence = ++requestSequence.current; return api<PagedResponse<AuditRow>>(`/admin/audit-logs${query.size ? `?${query}` : ''}`).then(result => { if (sequence === requestSequence.current) { setData(result); setError('') } }).catch(reason => { if (sequence === requestSequence.current) setError(reason instanceof Error ? reason.message : 'Unable to load audit log') }) }, [immediateQuery, debouncedAction, debouncedCase])
   useEffect(() => { void load() }, [load]); const update = (key: string, value: string) => setParams(updateAdminQuery(params, key, value)); const clear = () => setParams(new URLSearchParams())
   const page = Number(params.get('page') ?? '1'); const pageSize = Number(params.get('pageSize') ?? '25'); const filtersActive = hasAuditFilters(params)
   return <Stack spacing={3}><PageHeader title="Audit log" description={`Read-only system-level history for authorised managers and administrators.${data ? ` ${data.totalCount} result${data.totalCount === 1 ? '' : 's'}.` : ''}`} />

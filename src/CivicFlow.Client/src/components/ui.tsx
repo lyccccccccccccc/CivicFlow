@@ -38,7 +38,7 @@ const statusColors: Record<string, ChipProps['color']> = { Submitted: 'info', Tr
 export function StatusChip({ status, ...props }: { status: string } & Omit<ChipProps, 'label' | 'color'>) { return <Chip size="small" color={statusColors[status] ?? 'default'} label={formatStatus(status)} {...props} /> }
 
 const priorityColors: Record<string, ChipProps['color']> = { Critical: 'error', High: 'warning', Medium: 'info', Low: 'default' }
-export function PriorityChip({ priority, ...props }: { priority: string } & Omit<ChipProps, 'label' | 'color'>) { return <Chip size="small" color={priorityColors[priority] ?? 'default'} label={priority} {...props} /> }
+export function PriorityChip({ priority, ...props }: { priority?: string } & Omit<ChipProps, 'label' | 'color'>) { return priority ? <Chip size="small" color={priorityColors[priority] ?? 'default'} label={priority} {...props} /> : null }
 
 const slaColors: Record<string, ChipProps['color']> = { OnTrack: 'success', AtRisk: 'warning', Overdue: 'error', Breached: 'error', Complete: 'success' }
 export function SlaStatus({ state, label, ...props }: { state: string; label?: string } & Omit<ChipProps, 'label' | 'color'>) { return <Chip size="small" color={slaColors[state] ?? 'default'} label={label ?? formatStatus(state)} {...props} /> }

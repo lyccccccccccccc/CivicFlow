@@ -28,6 +28,8 @@ public sealed class AttachmentSecurityTests(CivicFlowFactory factory) : IClassFi
         Assert.Equal(HttpStatusCode.NoContent, (await Upload(id, Png, "retry.png", "image/png", "Public", "same-key")).StatusCode);
         var list = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{id}/attachments"); Assert.Single(list.EnumerateArray());
         var attachment = list.EnumerateArray().Single(); var attachmentId = attachment.GetProperty("id").GetGuid();
+        Assert.True(attachment.GetProperty("canDelete").GetBoolean());
+        Assert.False(attachment.TryGetProperty("uploadedByUserId", out _));
         Assert.DoesNotContain("storage", attachment.ToString(), StringComparison.OrdinalIgnoreCase); Assert.DoesNotContain("sha256", attachment.ToString(), StringComparison.OrdinalIgnoreCase);
         var download = await client.GetAsync($"/api/cases/{id}/attachments/{attachmentId}/content"); download.EnsureSuccessStatusCode();
         Assert.Equal("nosniff", download.Headers.GetValues("X-Content-Type-Options").Single()); Assert.NotNull(download.Headers.ETag); Assert.Equal(Png.Length, download.Content.Headers.ContentLength);

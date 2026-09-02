@@ -21,7 +21,7 @@ export function CaseDetailPage() {
   const [officers, setOfficers] = useState<Officer[]>([]); const [officerId, setOfficerId] = useState(''); const [resolutionSummary, setResolutionSummary] = useState('')
   const lock = useRef(false); const messageKey = useRef(crypto.randomUUID()); const internalKey = useRef(crypto.randomUUID()); const [reopenReason, setReopenReason] = useState(''); const [confirmReopen, setConfirmReopen] = useState(false)
   const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false)
-  const load = useCallback(() => api<CaseDetail>(`/cases/${id}`).then(data => { setDetail(data); setPriority(data.case.priority); setFirstDue(toLocal(data.case.firstResponseDueAtUtc)); setResolutionDue(toLocal(data.case.resolutionDueAtUtc)); setOfficerId(data.case.assignedOfficerId ?? '') }).catch(e => setError(e instanceof Error ? e.message : 'Unable to load request')), [id])
+  const load = useCallback(() => api<CaseDetail>(`/cases/${id}`).then(data => { setDetail(data); setPriority(data.case.priority ?? 'Medium'); setFirstDue(toLocal(data.case.firstResponseDueAtUtc)); setResolutionDue(toLocal(data.case.resolutionDueAtUtc)); setOfficerId(data.case.assignedOfficerId ?? '') }).catch(e => setError(e instanceof Error ? e.message : 'Unable to load request')), [id])
   useEffect(() => { void load() }, [load])
   useEffect(() => { if (canManage) void api<Officer[]>('/officers').then(setOfficers) }, [canManage])
 
