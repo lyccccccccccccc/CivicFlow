@@ -1,8 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { Alert, Button, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import { api, uploadAttachment, type Category } from '../api/client'
-import { MapPicker, type MapPoint } from '../components/MapPicker'
+import type { MapPoint } from '../components/MapPicker'
+import { FormActions, PageLoading } from '../components/ui'
+
+const MapPicker = lazy(() => import('../components/MapPicker').then(module => ({ default: module.MapPicker })))
 
 export function NewRequestPage() {
   const navigate = useNavigate(); const [categories, setCategories] = useState<Category[]>([])
@@ -20,10 +23,10 @@ export function NewRequestPage() {
       <TextField label="Short title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} slotProps={{ htmlInput: { maxLength: 150 } }} error={Boolean(errors.title)} helperText={errors.title ?? '5–150 characters'} required />
       <TextField label="What happened?" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} multiline minRows={5} slotProps={{ htmlInput: { maxLength: 2000 } }} error={Boolean(errors.description)} helperText={errors.description ?? '20–2000 characters. Include what you observed and any safety risk.'} required />
       <TextField label="Location or street address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} slotProps={{ htmlInput: { maxLength: 300 } }} error={Boolean(errors.address)} helperText={errors.address ?? '5–300 characters'} required />
-      <MapPicker value={location} onChange={setLocation} />
+      <Suspense fallback={<PageLoading label="Loading map" />}><MapPicker value={location} onChange={setLocation} /></Suspense>
       <Stack spacing={1}><Typography sx={{ fontWeight: 700 }}>Photos or PDF (optional)</Typography><Button component="label" variant="outlined">Choose up to 5 files<input hidden multiple type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={e => chooseFiles(e.target.files)} /></Button>{files.map(file => <Typography key={`${file.name}-${file.lastModified}`} variant="body2">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</Typography>)}</Stack>
       <Alert severity="info">The request is created first, then attachments upload individually. A failed file can be retried without losing the request.</Alert>
-      {createdCaseId ? <Stack direction="row" spacing={2} sx={{ justifyContent: 'flex-end' }}><Button onClick={() => navigate(`/cases/${createdCaseId}`)}>Open request</Button><Button variant="contained" disabled={busy || files.length === 0} onClick={() => void retry()}>{busy ? 'Retrying…' : 'Retry attachments'}</Button></Stack> : <Stack direction="row" spacing={2} sx={{ justifyContent: 'flex-end' }}><Button onClick={() => navigate(-1)}>Cancel</Button><Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Submitting…' : 'Submit request'}</Button></Stack>}
+      {createdCaseId ? <FormActions secondaryLabel="Open request" onSecondary={() => navigate(`/cases/${createdCaseId}`)} primaryLabel={busy ? 'Retrying…' : 'Retry attachments'} primaryProps={{ disabled: busy || files.length === 0, onClick: () => void retry() }} /> : <FormActions onSecondary={() => navigate(-1)} primaryLabel={busy ? 'Submitting…' : 'Submit request'} primaryProps={{ type: 'submit', size: 'large', disabled: busy }} />}
     </Stack></Paper>
 }
 
