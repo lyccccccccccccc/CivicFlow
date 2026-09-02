@@ -138,6 +138,19 @@ public sealed class StaffOperationsTests : IClassFixture<CivicFlowFactory>
         Assert.True(audit.GetProperty("items").GetArrayLength() >= 3);
     }
 
+    [Fact]
+    public async Task Admin_SameUserStatusAndCategoryValues_AreNoOp()
+    {
+        var admin = await Login("admin@civicflow.local"); var officer = await Login("officer@civicflow.local"); Authorize(admin.Token);
+        using var beforeScope = _factory.Services.CreateScope(); var beforeDb = beforeScope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); var before = await beforeDb.CaseActivities.CountAsync(x => x.Type == "UserStatusChanged"); var roleBefore = await beforeDb.CaseActivities.CountAsync(x => x.Type == "UserRoleChanged");
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync($"/api/admin/users/{officer.UserId}/active", new { isActive = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync($"/api/admin/users/{officer.UserId}/role", new { role = CivicFlowRoles.CaseOfficer })).StatusCode);
+        using var afterScope = _factory.Services.CreateScope(); var afterDb = afterScope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); Assert.Equal(before, await afterDb.CaseActivities.CountAsync(x => x.Type == "UserStatusChanged")); Assert.Equal(roleBefore, await afterDb.CaseActivities.CountAsync(x => x.Type == "UserRoleChanged"));
+        var categories = await _client.GetFromJsonAsync<JsonElement>("/api/admin/categories"); var category = categories.EnumerateArray().First(); var categoryAudit = await afterDb.CaseActivities.CountAsync(x => x.Type == "CategoryUpdated");
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync($"/api/admin/categories/{category.GetProperty("id").GetGuid()}", new { name = category.GetProperty("name").GetString(), description = category.GetProperty("description").GetString(), firstResponseHours = category.GetProperty("firstResponseHours").GetInt32(), resolutionHours = category.GetProperty("resolutionHours").GetInt32() })).StatusCode);
+        using var finalScope = _factory.Services.CreateScope(); var finalDb = finalScope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); Assert.Equal(categoryAudit, await finalDb.CaseActivities.CountAsync(x => x.Type == "CategoryUpdated"));
+    }
+
     private async Task<(string Token, Guid UserId)> Login(string email)
     {
         _client.DefaultRequestHeaders.Authorization = null;
