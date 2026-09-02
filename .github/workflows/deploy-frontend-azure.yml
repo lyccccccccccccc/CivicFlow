@@ -3,7 +3,9 @@ name: Deploy frontend to Azure
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches:
+      - master
+      - feature/frontend-experience-v1
     paths:
       - "src/CivicFlow.Client/**"
       - ".github/workflows/deploy-frontend-azure.yml"
