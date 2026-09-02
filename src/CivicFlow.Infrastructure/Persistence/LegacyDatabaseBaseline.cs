@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -15,6 +16,11 @@ public static class LegacyDatabaseBaseline
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         if (!db.Database.IsSqlServer()) return;
+
+        // A brand-new database has no legacy schema to register. Returning here
+        // lets the normal EF migrator create the database and apply Initial.
+        // Existing databases remain subject to the strict semantic validator.
+        if (!await db.GetService<IRelationalDatabaseCreator>().ExistsAsync(cancellationToken)) return;
 
         var connection = db.Database.GetDbConnection();
         await connection.OpenAsync(cancellationToken);

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Alert, Stack, Typography } from '@mui/material'
 import { CircleMarker, MapContainer, TileLayer } from 'react-leaflet'
 
-const tileUrl = import.meta.env.VITE_MAP_TILE_URL ?? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const attribution = import.meta.env.VITE_MAP_ATTRIBUTION ?? '&copy; OpenStreetMap contributors'
+const tileUrl = import.meta.env.VITE_MAP_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const attribution = import.meta.env.VITE_MAP_ATTRIBUTION || '&copy; OpenStreetMap contributors'
 
 export function CaseMap({ latitude, longitude }: { latitude?: number; longitude?: number }) {
   const [unavailable, setUnavailable] = useState(false)
