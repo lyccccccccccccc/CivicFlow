@@ -55,7 +55,7 @@ jobs:
         run: echo "reference=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     needs: build-and-publish
     runs-on: ubuntu-latest
     environment: azure-staging
