@@ -28,7 +28,8 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { message?: string; detail?: string; title?: string; errors?: Record<string, string[]> }
     const fieldError = body.errors ? Object.values(body.errors).flat()[0] : undefined
-    throw new Error(fieldError ?? body.message ?? body.detail ?? body.title ?? `Request failed (${response.status})`)
+    const message = fieldError ?? body.message ?? body.detail ?? body.title ?? `Request failed (${response.status})`
+    throw new Error(response.status === 409 ? `${message} This case changed while you were working. Refresh the page and try again.` : message)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
