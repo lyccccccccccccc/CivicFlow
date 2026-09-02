@@ -23,7 +23,7 @@ Key engineering features include API-enforced RBAC and resident isolation, first
 | API | C# 14, ASP.NET Core 10 controller API, OpenAPI, JWT authentication |
 | Persistence | EF Core 10 migrations, SQL Server 2022, ASP.NET Core Identity |
 | Files | Private Azure Blob Storage in production; Azurite locally |
-| Delivery | Docker Compose, Railway-ready containers, Caddy, PowerShell developer launcher, GitHub Actions |
+| Delivery | Docker Compose, Azure Static Web Apps, Azure Container Apps, GHCR, PowerShell developer launcher, GitHub Actions |
 | Tests | xUnit domain, API integration, real SQL Server, and storage smoke tests |
 
 ## Architecture
@@ -158,11 +158,11 @@ For real SQL integration, set `CIVICFLOW_TEST_SQL` to a dedicated test database 
 
 See [SECURITY.md](SECURITY.md) before deploying. This project is a portfolio-quality reference implementation, not a certified government production service.
 
-## Railway staging architecture
+## Azure staging architecture
 
-CivicFlow can be deployed from this monorepo as four Railway services: a Caddy-served React frontend, the ASP.NET Core API, private SQL Server, and private Azurite. Only the frontend and API receive public domains. SQL Server persists `/var/opt/mssql`; Azurite persists `/data`. The frontend uses same-origin `/api` requests and Caddy forwards them to the API over Railway private networking, while SPA fallback keeps deep-link refreshes working.
+The public staging architecture uses Azure Static Web Apps Free for the Vite client, Azure Container Apps Consumption for the API, the Azure SQL Database free offer, and a private Standard LRS Blob container. The API uses system-assigned Managed Identity for SQL and Blob access. GitHub Actions publishes the public API image to GHCR and deploys both application surfaces without committed cloud credentials.
 
-The API binds Railway's `PORT` on `0.0.0.0`. Connection strings, JWT signing material, CORS origin, migration controls, demo seed controls, and Blob settings come exclusively from environment variables. A fresh staging database may opt into automatic migrations and demo/reference seed; production remains fail-closed and does not expose demo credentials. Follow the complete [Railway deployment runbook](docs/railway-deployment.md).
+Cost controls include a monthly budget, SQL free-limit auto-pause, Container Apps scale-to-zero with a single-replica maximum, capped Log Analytics ingestion, and no ACR, NAT Gateway, Private Endpoint, Defender plan, or paid support plan. Follow the [Azure staging runbook](docs/azure-deployment.md). The earlier [Railway runbook](docs/railway-deployment.md) remains as historical deployment documentation.
 
 ## Troubleshooting
 
@@ -182,6 +182,7 @@ The API binds Railway's `PORT` on `0.0.0.0`. Connection strings, JWT signing mat
 - [Product scope](docs/product-scope.md)
 - [Phase 3A acceptance evidence](docs/phase3a-acceptance-report.md)
 - [Screenshot checklist](docs/screenshots/README.md)
+- [Azure staging deployment](docs/azure-deployment.md)
 - [Railway staging deployment](docs/railway-deployment.md)
 
 ## Known limitations and roadmap

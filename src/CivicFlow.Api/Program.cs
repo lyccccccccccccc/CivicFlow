@@ -10,8 +10,8 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Railway injects PORT at runtime. Bind explicitly to every interface while
-// retaining launchSettings/ASPNETCORE_URLS behaviour for local development.
+// Some container platforms inject PORT at runtime. Bind explicitly to every
+// interface while retaining ASPNETCORE_HTTP_PORTS/launchSettings behaviour.
 var platformPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(platformPort))
 {
