@@ -16,7 +16,7 @@ export function PasswordField({ label = 'Password', autoComplete, helperText, ..
 
 export function CharacterCounter({ current, max, id }: { current: number; max: number; id?: string }) {
   const remaining = max - current
-  return <Typography id={id} variant="caption" color={remaining < 0 ? 'error.main' : 'text.secondary'} aria-live="polite">{current.toLocaleString()} / {max.toLocaleString()} characters</Typography>
+  return <Typography component="span" id={id} variant="caption" color={remaining < 0 ? 'error.main' : 'text.secondary'} aria-live="polite">{current.toLocaleString()} / {max.toLocaleString()} characters</Typography>
 }
 
 export function InlineNotice({ severity = 'info', title, children }: { severity?: AlertColor; title?: string; children: ReactNode }) {
